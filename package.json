@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "gdax-trading-toolkit": "^0.2.2"
+  }
+}

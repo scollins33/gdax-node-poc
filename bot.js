@@ -66,7 +66,6 @@ let currentBlock = {
 // Start message feed, handle errors and closing as well
 wsCustom.on('message', data => {
     if (data.type === 'match') {
-        console.log('> Received new data');
         handleInfo(data, currentBlock);
     }
 });
@@ -76,7 +75,6 @@ wsCustom.on('close', () => {});
 // Create interval to store data, reset block, and report current status
 // Interval should run every minute to create 1-minute blocks
 const builder = setInterval(() => {
-    console.log('> Building new block');
     currentBlock = handleBlock(currentBlock);
     runTicker();
 }, 60000);
@@ -88,7 +86,6 @@ const builder = setInterval(() => {
 
 // Parse new data and update current block
 function handleInfo (pData, pBlock) {
-    console.log('   - Handling new data');
     const tradePrice = parseFloat(pData.price);
     const tradeSize = parseFloat(pData.size);
 
@@ -102,16 +99,13 @@ function handleInfo (pData, pBlock) {
     // check if this is a new high or low
     // null check to handle new block
     if (pBlock.low === null && pBlock.high === null) {
-        console.log('   - Both LOW/HIGH are null, should be 1st trade of the block');
         pBlock.low = tradePrice;
         pBlock.high = tradePrice;
     }
     else if (tradePrice < pBlock.low) {
-        console.log('   - New block LOW');
         pBlock.low = tradePrice;
     }
     else if (tradePrice > pBlock.high) {
-        console.log('   - New block HIGH');
         pBlock.high = tradePrice;
     }
 }
@@ -137,13 +131,23 @@ function handleBlock (pBlock) {
 
 // Compute and compare moving averages, report on current trend
 function runTicker () {
-    const total60 = MA60.reduce((acc, cur) => { return acc + cur }, 0);
-    const avg60 = total60 / 60;
+    const total60 = MA60.reduce((acc, cur) => {
+        console.log(acc);
+        console.log(cur);
+        return acc + cur.weightAvg }, 0);
+    const avg60 = total60 / 60.0;
 
-    const total180 = MA180.reduce((acc, cur) => { return acc + cur }, 0);
-    const avg180 = total180 / 180;
+    const total180 = MA180.reduce((acc, cur) => {
+        console.log(acc);
+        console.log(cur);
+        return acc + cur.weightAvg }, 0);
+    const avg180 = total180 / 180.0;
 
     const status = avg60 > avg180 ? "UP TREND - SHORT OVER LONG" : "DOWN TREND - LONG OVER SHORT";
+
+    console.log(`   ----- Debug Lines -----`);
+    console.log(`   Total from MA60 reduction: ${total60}`);
+    console.log(`   Total from MA180 reduction: ${total180}`);
 
     console.log('* ------------------------------------------ *')
     console.log(`       60 Period Average: ${avg60}`);

@@ -33,6 +33,7 @@
 const GDAX = require('gdax');
 const { PublicClient, WebsocketClient, AuthenticatedClient } = require('gdax');
 const CustomWS = require('./lib/websocket');
+const fs = require('fs');
 
 
 /* ------------------------------------------
@@ -45,10 +46,14 @@ const CustomWS = require('./lib/websocket');
 // wsClient = new WebsocketClient(['ETH-USD']);
 const wsCustom = new CustomWS(['ETH-USD'])
 
-let MA60 = [];
-let MA180 = [];
+// create file if needed and start logging stream
+if (!fs.existsSync('./logs/test.txt')) {
+    fs.closeSync(fs.openSync('./logs/test.txt', 'w'));
+}
+const logStream = fs.createWriteStream('./logs/test.txt');
 
-// create the initial block
+// create the archive array and initial block
+let archive = [];
 let currentBlock = {
     matches: 0,
     volume: 0.0,
@@ -113,10 +118,9 @@ function handleInfo (pData, pBlock) {
 // Deal with storage of the block
 function handleBlock (pBlock) {
     // store the current state of the block into the historical arrays
-    MA60.push(pBlock);
-    MA180.push(pBlock);
-    if (MA60.length > 60) { MA60.shift(); }
-    if (MA180.length > 180) { MA180.shift(); }
+    // unshift to add at the start, pop to remove the end
+    archive.unshift(pBlock);
+    if (archive.length > 180) { archive.pop(); }
     
     // return fresh object so currentBlock gets reset
     return {
@@ -131,27 +135,22 @@ function handleBlock (pBlock) {
 
 // Compute and compare moving averages, report on current trend
 function runTicker () {
-    const total60 = MA60.reduce((acc, cur) => {
-        console.log(acc);
-        console.log(cur);
-        return acc + cur.weightAvg }, 0);
-    const avg60 = total60 / 60.0;
+    // create the traiing arrays
+    const trail60 = archive.slice(0,60);
+    const trail180 = archive.splice(0,180);
+    
+    // reduce the traling arrays to the total
+    const total60 = trail60.reduce((acc, cur) => { return acc + cur.weightAvg }, 0);
+    const total180 = trail180.reduce((acc, cur) => { return acc + cur.weightAvg }, 0);
 
-    const total180 = MA180.reduce((acc, cur) => {
-        console.log(acc);
-        console.log(cur);
-        return acc + cur.weightAvg }, 0);
+    // average out the totals
+    const avg60 = total60 / 60.0;
     const avg180 = total180 / 180.0;
 
     const status = avg60 > avg180 ? "UP TREND - SHORT OVER LONG" : "DOWN TREND - LONG OVER SHORT";
 
-    console.log(`   ----- Debug Lines -----`);
-    console.log(`   Total from MA60 reduction: ${total60}`);
-    console.log(`   Total from MA180 reduction: ${total180}`);
-
-    console.log('* ------------------------------------------ *')
-    console.log(`       60 Period Average: ${avg60}`);
-    console.log(`       180 Period Average: ${avg180}`);
-    console.log(`       Market Status: ${status}`);
-    console.log('* ------------------------------------------ *');
+    logStream.write(`       60 Period Average: ${avg60} \n`);
+    logStream.write(`       180 Period Average: ${avg180} \n`);
+    logStream.write(`       Market Status: ${status} \n`);
+    logStream.write('* ------------------------------------------ * \n');
 }

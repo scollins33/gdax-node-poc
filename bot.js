@@ -40,12 +40,6 @@ const fs = require('fs');
         GLOBALS
    ------------------------------------------ */
 
-// create PublicClient instance for book checking
-// pubClient = new PublicClient();
-// use custom Websocket Client to change what channels are being sub'd to
-// wsClient = new WebsocketClient(['ETH-USD']);
-const wsCustom = new CustomWS(['ETH-USD'])
-
 // create file if needed and start logging stream
 if (!fs.existsSync('./logs/test.txt')) {
     fs.closeSync(fs.openSync('./logs/test.txt', 'w'));
@@ -63,31 +57,44 @@ let currentBlock = {
     high: null
 }
 
+// Spawn the websocket connection info and start getting data
+startWS();
 
 /* ------------------------------------------
         CORE FUNCTIONALITY
    ------------------------------------------ */
 
-// Start message feed, handle errors and closing as well
-wsCustom.on('message', data => {
-    if (data.type === 'match') {
-        handleInfo(data, currentBlock);
-    }
-});
-wsCustom.on('error', err => { console.log(err) });
-wsCustom.on('close', () => {});
+function startWS () {
+    logit(`[DEBUG] Creating Websocket connection and handlers`);
+    // use custom Websocket Client to change what channels are being sub'd to
+    let wsCustom = new CustomWS(['ETH-USD']);
+
+    wsCustom.on('message', data => {
+        if (data.type === 'match') {
+            handleInfo(data, currentBlock);
+        }
+    });
+    wsCustom.on('error', err => { logStream.write(err) });
+    
+    wsCustom.on('close', () => { startWS() });
+}
 
 // Create interval to store data, reset block, and report current status
 // Interval should run every minute to create 1-minute blocks
 const builder = setInterval(() => {
     currentBlock = handleBlock(currentBlock);
-    runTicker();
 }, 60000);
 
 
 /* ------------------------------------------
         HELPER FUNCTIONS
    ------------------------------------------ */
+
+// Helper function to consolelog and writelog
+function logit (pMessage) {
+    console.log(pMessage);
+    logStream.write(pMessage + ' \n');
+}
 
 // Parse new data and update current block
 function handleInfo (pData, pBlock) {
@@ -115,15 +122,9 @@ function handleInfo (pData, pBlock) {
     }
 }
 
-// Deal with storage of the block
+// Deal with storage of the block and catch empty/trouble blocks in case of connection loss
 function handleBlock (pBlock) {
-    // store the current state of the block into the historical arrays
-    // unshift to add at the start, pop to remove the end
-    archive.unshift(pBlock);
-    if (archive.length > 180) { archive.pop(); }
-    
-    // return fresh object so currentBlock gets reset
-    return {
+    const freshBlock = {
         matches: 0,
         volume: 0.0,
         sumStrike: 0.0,
@@ -131,17 +132,54 @@ function handleBlock (pBlock) {
         low: null,
         high: null,
     }
+    
+    // check for empty block
+    // don't need to check for half empty since actions are only taken on Matches and no 0's are written
+    if (pBlock.matches === 0) {
+        logit('[DEBUG] BLANK BLOCK DETECTED AND IGNORED');
+        return freshBlock;
+    } else {
+        // store the current state of the block into the historical array
+        // unshift to add at the start, pop to remove the end
+        archive.unshift(pBlock);
+        logit(`[DEBUG] ARCHIVE LENGTH: ${archive.length}`);
+
+        if (archive.length > 180) {
+            logit(`[DEBUG] archive.length > 180, popping the last stored object`);
+    
+            archive.pop();
+            logit(`[DEBUG] new archive length: ${archive.length}`);
+    
+        }
+        // run ticker since a new block was added and return a fresh block
+        runTicker();
+        return freshBlock;
+    }
 }
 
 // Compute and compare moving averages, report on current trend
 function runTicker () {
+    logit(`[DEBUG] running ticker calculations`);
     // create the traiing arrays
     const trail60 = archive.slice(0,60);
-    const trail180 = archive.splice(0,180);
+    const trail180 = archive.slice(0,180);
+    let debugTally60 = 0;
+    let debugTally180 = 0;
     
     // reduce the traling arrays to the total
-    const total60 = trail60.reduce((acc, cur) => { return acc + cur.weightAvg }, 0);
-    const total180 = trail180.reduce((acc, cur) => { return acc + cur.weightAvg }, 0);
+    const total60 = trail60.reduce((sum, cur) => {
+        debugTally60++;
+        return sum + cur.weightAvg;
+    }, 0);
+    const total180 = trail180.reduce((sum, cur) => {
+        debugTally180++;
+        return sum + cur.weightAvg;
+    }, 0);
+
+    logit(`[DEBUG] debugTally60 = ${debugTally60}`);
+    logit(`[DEBUG] debugTally180 = ${debugTally180}`);
+    logit(`[DEBUG] total60 = ${total60}`);
+    logit(`[DEBUG] total180 = ${total180}`);
 
     // average out the totals
     const avg60 = total60 / 60.0;
@@ -149,8 +187,8 @@ function runTicker () {
 
     const status = avg60 > avg180 ? "UP TREND - SHORT OVER LONG" : "DOWN TREND - LONG OVER SHORT";
 
-    logStream.write(`       60 Period Average: ${avg60} \n`);
-    logStream.write(`       180 Period Average: ${avg180} \n`);
-    logStream.write(`       Market Status: ${status} \n`);
-    logStream.write('* ------------------------------------------ * \n');
+    logit(`       60 Period Average: ${avg60}`);
+    logit(`       180 Period Average: ${avg180}`);
+    logit(`       Market Status: ${status}`);
+    logit('* ------------------------------------------ *');
 }

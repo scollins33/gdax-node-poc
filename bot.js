@@ -182,8 +182,10 @@ function runTicker () {
     }, 0);
 
     const debugBlocks = archive.slice(0,6);
+    debugBlocks.forEach((each) => {
+        logStream.write(JSON.parse(each.blockID) + ' \n');
+    });
 
-    logit(`[DEBUG] DEBUG BLOCKS = ${debugBlocks}`);
     logit(`[DEBUG] debugTally60 = ${debugTally60}`);
     logit(`[DEBUG] debugTally180 = ${debugTally180}`);
     logit(`[DEBUG] total60 = ${total60}`);

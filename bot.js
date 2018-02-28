@@ -48,14 +48,17 @@ const logStream = fs.createWriteStream('./logs/test.txt');
 
 // create the archive array and initial block
 let archive = [];
+
+let BLOCKID = 1;
 let currentBlock = {
+    blockID: BLOCKID,
     matches: 0,
     volume: 0.0,
     sumStrike: 0.0,
     weightAvg: 0.0,
     low: null,
     high: null
-}
+};
 
 // Spawn the websocket connection info and start getting data
 startWS();
@@ -81,7 +84,7 @@ function startWS () {
 
 // Create interval to store data, reset block, and report current status
 // Interval should run every minute to create 1-minute blocks
-const builder = setInterval(() => {
+setInterval(() => {
     currentBlock = handleBlock(currentBlock);
 }, 60000);
 
@@ -124,14 +127,16 @@ function handleInfo (pData, pBlock) {
 
 // Deal with storage of the block and catch empty/trouble blocks in case of connection loss
 function handleBlock (pBlock) {
+    BLOCKID++;
     const freshBlock = {
+        blockID: BLOCKID,
         matches: 0,
         volume: 0.0,
         sumStrike: 0.0,
         weightAvg: 0.0,
         low: null,
         high: null,
-    }
+    };
     
     // check for empty block
     // don't need to check for half empty since actions are only taken on Matches and no 0's are written
@@ -160,13 +165,13 @@ function handleBlock (pBlock) {
 // Compute and compare moving averages, report on current trend
 function runTicker () {
     logit(`[DEBUG] running ticker calculations`);
-    // create the traiing arrays
+    // create the trailing arrays
     const trail60 = archive.slice(0,60);
     const trail180 = archive.slice(0,180);
     let debugTally60 = 0;
     let debugTally180 = 0;
     
-    // reduce the traling arrays to the total
+    // reduce the trailing arrays to the total
     const total60 = trail60.reduce((sum, cur) => {
         debugTally60++;
         return sum + cur.weightAvg;
@@ -176,6 +181,9 @@ function runTicker () {
         return sum + cur.weightAvg;
     }, 0);
 
+    const debugBlocks = archive.slice(0,6);
+
+    logit(`[DEBUG] DEBUG BLOCKS = ${debugBlocks}`);
     logit(`[DEBUG] debugTally60 = ${debugTally60}`);
     logit(`[DEBUG] debugTally180 = ${debugTally180}`);
     logit(`[DEBUG] total60 = ${total60}`);

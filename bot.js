@@ -299,6 +299,7 @@ function makeTradeDecision(avgArray) {
         const properMove = pShort > pLong;
 
         switch (properMove) {
+
             case true:
                 // >> check for InitialRound -> pass if it is
                 if (STATUS.initialRound) {
@@ -413,6 +414,7 @@ function handleTradeDecision (pDecisionObj) {
                 logit(logger, JSON.stringify(ethAccount));
 
                 switch (pDecisionObj.action) {
+
                     // Enter into Buy Logic
                     case 'buy':
                         logit(logger, `[handleTradeDecision] Selected Buy case, creating buy order`);
@@ -613,7 +615,7 @@ function generatePage() {
     page += '<br>';
 
     HISTORY.forEach((each) => {
-        page += `<p>Time: ${each.time} | Bought: ${each.purchase} | Sold: ${each.sale}  | Fees: ${each.totalFees} | Profit: ${each.profit} | Total: ${each.totalProfit} </p>`;
+        page += `<p>Time: ${each.time} | Bought: ${each.purchase} | Sold: ${each.sale}  | Fees: ${each.fees} | Profit: ${each.profit} | Total: ${each.totalProfit} </p>`;
     });
 
     return page;

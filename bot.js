@@ -21,8 +21,8 @@ else if (SHORT_PERIODS >= LONG_PERIODS) {
     console.log(`[HELP] Short Periods must be less than Long Periods`);
     process.exit(1);
 }
-else if (SHORT_PERIODS > 359 || LONG_PERIODS > 360) {
-    console.log(`[HELP] Moving average lengths cannot exceed 360`);
+else if (SHORT_PERIODS > 719 || LONG_PERIODS > 720) {
+    console.log(`[HELP] Moving average lengths cannot exceed 720`);
     process.exit(1);
 }
 
@@ -83,8 +83,11 @@ if (fs.existsSync('./backup/archive.txt')) {
     currentBlock.blockID = BLOCKID;
 }
 
-const bobHeaders = `Block_ID,Start_Time,Number_Matches,Volume,Summation_Strike_Price,Weighted_Average,Low,High,Bid_Price,Ask_Price,\r\n`;
-fs.appendFile('./logs/bobData.csv', bobHeaders, (err) => { if (err) throw err; });
+// Check for bobData and create it if not
+if (!fs.existsSync('./logs/bobData.csv')) {
+    const bobHeaders = `Block_ID,Start_Time,Number_Matches,Volume,Summation_Strike_Price,Weighted_Average,Low,High,Bid_Price,Ask_Price,\n`;
+    fs.appendFile('./logs/bobData.csv', bobHeaders, (err) => { if (err) throw err; });
+}
 
 // Spawn the WebSocket connection info and start getting data
 logit(logger, `[STARTUP] Running bot using ${SHORT_PERIODS} and ${LONG_PERIODS}`);
@@ -217,13 +220,13 @@ function handleBlock (pBlock) {
             // store the current state of the block into the historical array
             // unshift to add at the start, pop to remove the end
             ARCHIVE.unshift(pBlock);
-            if (ARCHIVE.length > 360) { ARCHIVE.pop(); }
+            if (ARCHIVE.length > 720) { ARCHIVE.pop(); }
 
             // write data to Bob's CSV file
             authedClient
                 .getProductOrderBook('ETH-USD')
                 .then(data => {
-                    const DataAsString = `${pBlock.blockID},${pBlock.startTime},${pBlock.matches},${pBlock.volume},${pBlock.sumStrike},${pBlock.weightAvg},${pBlock.low},${pBlock.high},${data.bids[0][0]},${data.asks[0][0]},\r\n`;
+                    const DataAsString = `${pBlock.blockID},${pBlock.startTime},${pBlock.matches},${pBlock.volume},${pBlock.sumStrike},${pBlock.weightAvg},${pBlock.low},${pBlock.high},${data.bids[0][0]},${data.asks[0][0]},\n`;
                     fs.appendFile('./logs/bobData.csv', DataAsString, (err) => { if (err) throw err; });
                 })
                 .catch(err => {logit(logger, err)});
@@ -489,105 +492,6 @@ function handleTradeDecision (pDecisionObj) {
 
 
     });
-}
-
-function buyPosition() {
-    logit(logger, `[DEBUG] Entering buyPosition`);
-    Promise.all([
-        authedClient.getProductOrderBook('ETH-USD'),
-        authedClient.getAccount(keychain.usdAccount)
-    ])
-        .then((results) => {
-            console.log(results[0]);
-            console.log(results[1]);
-
-            // build the parameters for a MARKET buy
-            // used 95% of USD so there is room for fees
-            const params = {
-                type: 'market',
-                side: 'buy',
-                product_id: 'ETH-USD',
-                funds: (results[1].available * 0.98).toFixed(2),
-            };
-
-            logit(logger, params);
-
-            // place the order using the params
-            authedClient.placeOrder(params)
-                .then((data) => {
-                    logit(logger, data);
-                    STATUS.lastOrder = data.id;
-
-                    setTimeout(() => {
-                        authedClient
-                            .getOrder(STATUS.lastOrder)
-                            .then(data => {
-                                STATUS.havePosition = true;
-                                STATUS.lastBuyPrice = Number(data.executed_value) / Number(data.filled_size);
-                                STATUS.lastBuyCost = data.executed_value;
-                                STATUS.buyFee = Number(data.fill_fees);
-
-                                HISTORY.push({ time: data.done_at, action: "Buy", price: STATUS.lastBuyPrice, fees: STATUS.buyFee });
-                                logit(logger, `[TRADE] BOUGHT at ${STATUS.lastBuyPrice} and STATUS.havePosition ${STATUS.havePosition}`);
-                                logit(logger, `[TRADE] SPENT ${STATUS.lastBuyCost} and ${STATUS.buyFee}`);
-                            })
-                            .catch(err => console.log(err));
-                    }, 2000);
-                })
-                .catch(err => logit(logger, err));
-        });
-}
-
-function sellPosition() {
-    logit(logger, `[DEBUG] Entering sellPosition`);
-    Promise.all([
-        authedClient.getProductOrderBook('ETH-USD'),
-        authedClient.getAccount(keychain.ethAccount)
-    ])
-        .then((results) => {
-            console.log(results[0]);
-            console.log(results[1]);
-
-            // build the parameters for a MARKET sell
-            // used 95% of USD so there is room for fees
-            const params = {
-                type: 'market',
-                side: 'sell',
-                product_id: 'ETH-USD',
-                size: results[1].available,
-            };
-
-            logit(logger, params);
-
-            // place the order using the params
-            authedClient.placeOrder(params)
-                .then((data) => {
-                    logit(logger, data);
-                    STATUS.lastOrder = data.id;
-
-                    setTimeout(() => {
-                        authedClient
-                            .getOrder(STATUS.lastOrder)
-                            .then(data => {
-                                STATUS.havePosition = false;
-                                STATUS.lastSellPrice = Number(data.executed_value) / Number(data.filled_size);
-                                STATUS.lastSellCost = data.executed_value;
-
-                                logit(logger, `[TRADE] ${STATUS.lastSellCost} - ${STATUS.lastBuyCost} - ${STATUS.buyFee} - ${data.fill_fees}`);
-                                const this_profit = STATUS.lastSellCost - STATUS.lastBuyPrice - STATUS.buyFee - Number(data.fill_fees);
-                                STATUS.totalProfit += this_profit;
-                                STATUS.buyFee = 0;
-
-                                HISTORY.push({ time: moment().format('MM/DD/YYYY HH:mm:ss'), action: "Sell", price: STATUS.lastSellPrice, profit: this_profit, fees: data.fill_fees });
-                                logit(logger, `[TRADE] SOLD at ${STATUS.lastSellPrice} and STATUS.havePosition ${STATUS.havePosition}`);
-                                logit(logger, `[TRADE] Profit: ${this_profit}`);
-                                logit(logger, `[TRADE] Total Profit: ${STATUS.totalProfit}`);
-                            })
-                            .catch(err => console.log(err));
-                    }, 2000);
-                })
-                .catch(err => logit(logger, err));
-        });
 }
 
 function generatePage() {

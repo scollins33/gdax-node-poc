@@ -21,8 +21,8 @@ else if (SHORT_PERIODS >= LONG_PERIODS) {
     console.log(`[HELP] Short Periods must be less than Long Periods`);
     process.exit(1);
 }
-else if (SHORT_PERIODS > 719 || LONG_PERIODS > 720) {
-    console.log(`[HELP] Moving average lengths cannot exceed 720`);
+else if (SHORT_PERIODS > 1439 || LONG_PERIODS > 1440) {
+    console.log(`[HELP] Moving average lengths cannot exceed 1440`);
     process.exit(1);
 }
 
@@ -111,7 +111,7 @@ setInterval(() => {
         .then(decision => handleTradeDecision(decision))
         .then(result => console.log(result))
         .catch((err) => logit(logger, `[Promise Chain] ${err}`));
-}, 60000);
+}, 15000);
 
 
 /* ------------------------------------------
@@ -220,7 +220,7 @@ function handleBlock (pBlock) {
             // store the current state of the block into the historical array
             // unshift to add at the start, pop to remove the end
             ARCHIVE.unshift(pBlock);
-            if (ARCHIVE.length > 720) { ARCHIVE.pop(); }
+            if (ARCHIVE.length > 1440) { ARCHIVE.pop(); }
 
             // write data to Bob's CSV file
             authedClient

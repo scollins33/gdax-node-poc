@@ -21,8 +21,8 @@ else if (SHORT_PERIODS >= LONG_PERIODS) {
     console.log(`[HELP] Short Periods must be less than Long Periods`);
     process.exit(1);
 }
-else if (SHORT_PERIODS > 1439 || LONG_PERIODS > 1440) {
-    console.log(`[HELP] Moving average lengths cannot exceed 1440`);
+else if (SHORT_PERIODS > 1919 || LONG_PERIODS > 1920) {
+    console.log(`[HELP] Moving average lengths cannot exceed 1920`);
     process.exit(1);
 }
 
@@ -36,6 +36,7 @@ const keychain = JSON.parse(fs.readFileSync('keychain.txt', 'utf8'));
 let ARCHIVE = [];
 let HISTORY = [];
 let BLOCKID = 1;
+let BLANKS = 0;
 
 let currentBlock = {
     blockID: BLOCKID,
@@ -215,12 +216,21 @@ function handleBlock (pBlock) {
         // don't need to check for half empty since actions are only taken on Matches and no 0's are written
         if (pBlock.matches === 0) {
             logit(logger, '[handleBlock] BLANK BLOCK DETECTED AND IGNORED');
+            BLANKS++;
+            
+            if (BLANKS >= 8) {
+                BLANKS = 0;
+                logit(logger, `[CONNECTION] Restarting Websocket as a backup - 2 minutes of no matches have occured`);
+                startWebsocket();
+            }
+                
             return freshBlock;
         } else {
+            BLANKS = 0;
             // store the current state of the block into the historical array
             // unshift to add at the start, pop to remove the end
             ARCHIVE.unshift(pBlock);
-            if (ARCHIVE.length > 1440) { ARCHIVE.pop(); }
+            if (ARCHIVE.length > 1920) { ARCHIVE.pop(); }
 
             // write data to Bob's CSV file
             authedClient
@@ -259,7 +269,7 @@ function calcAverages () {
         logit(logger, `[calcAverages] Long  MA: ${long_average}`);
         logit(logger, '* ------------------------------------------ *');
 
-        if (ARCHIVE.length > LONG_PERIODS) {
+        if (ARCHIVE.length >= LONG_PERIODS) {
             // makeTradeDecision(short_average, long_average);
             resolve([short_average, long_average]);
         } else {

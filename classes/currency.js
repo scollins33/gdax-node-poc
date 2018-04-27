@@ -12,6 +12,10 @@ class Currency {
         this.data.unshift(pPoint);
     }
 
+    removeData() {
+        this.data.pop();
+    }
+
     addTxn(pTxn) {
         this.txn.push(pTxn);
     }

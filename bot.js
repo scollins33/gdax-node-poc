@@ -158,8 +158,10 @@ function handleBlock () {
         const btcPromise = authedClient.getProductOrderBook(BTC.ticker)
             .then(data => {
                 const point = new Datum(data);
-                console.log(point);
+
                 BTC.addData(point);
+                if (BTC.data.length > 4320) { BTC.removeData(); }
+
                 return true;
             })
             .catch((err) => logit(logger, `[BTC GET] ${err}`));

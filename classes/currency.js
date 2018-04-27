@@ -9,7 +9,7 @@ class Currency {
     }
 
     addData(pPoint) {
-        this.txn.unshift(pPoint);
+        this.data.unshift(pPoint);
     }
 
     addTxn(pTxn) {

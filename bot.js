@@ -29,8 +29,8 @@ else if (SHORT_PERIODS >= LONG_PERIODS) {
     console.log(`[HELP] Short Periods must be less than Long Periods`);
     process.exit(1);
 }
-else if (SHORT_PERIODS > 1439 || LONG_PERIODS > 1440) {
-    console.log(`[HELP] Moving average lengths cannot exceed 1440`);
+else if (SHORT_PERIODS > 4319 || LONG_PERIODS > 4320) {
+    console.log(`[HELP] Moving average lengths cannot exceed 4320`);
     process.exit(1);
 }
 
@@ -158,7 +158,9 @@ function handleBlock () {
         const btcPromise = authedClient.getProductOrderBook(BTC.ticker)
             .then(data => {
                 const point = new Datum(data);
-                return BTC.addData(point);
+                console.log(point);
+                BTC.addData(point);
+                return true;
             })
             .catch((err) => logit(logger, `[BTC GET] ${err}`));
 
@@ -183,9 +185,11 @@ function handleBlock () {
 function calcAverages () {
     return new Promise((resolve, reject) => {
         logit(logger, `[calcAverages] Entering calcAverages`);
+
         // create the trailing arrays
         const btc_short = BTC.data.slice(0,SHORT_PERIODS);
         const btc_long = BTC.data.slice(0,LONG_PERIODS);
+
         let btc_short_total = null;
         let btc_long_total = null;
         let btc_short_avg = null;

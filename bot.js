@@ -8,6 +8,14 @@ const moment = require('moment');
 
 
 /* ------------------------------------------
+        IMPORT CLASSES
+   ------------------------------------------ */
+const Currency = require('./classes/currency');
+const Transaction = require('./classes/transaction');
+const Datum = require('./classes/datum');
+
+
+/* ------------------------------------------
         SCRIPT STARTUP CHECKS
    ------------------------------------------ */
 const SHORT_PERIODS = parseInt(process.argv[2]);
@@ -33,21 +41,24 @@ const keychain = JSON.parse(fs.readFileSync('keychain.txt', 'utf8'));
         GLOBALS
    ------------------------------------------ */
 
-let BTC_DATA = [];
-let ETH_DATA = [];
+// Create the Authorized Client
+const authedClient = new AuthenticatedClient(
+    keychain.key,
+    keychain.secret,
+    keychain.passphrase,
+    'https://api.gdax.com'
+);
 
-let BTC_STATUS = false;
-let ETH_STATUS = false;
+// Create the currencies
+const BTC = new Currency('Bitcoin', 'BTC-USD');
+const ETH = new Currency('Ethereum', 'ETH-USD');
 
-let BTC_INITIAL = true;
-let ETH_INITIAL = true;
-
-let HISTORY = [];
-let BLOCKID = 1;
+let totalProfit = 0;
+let totalFees = 0;
 
 
 /* ------------------------------------------
-        START BOT FUNCTIONS
+        BOT START UP CHECKS
    ------------------------------------------ */
 // Check for backup and logs folders, then create them if missing
 if (!fs.existsSync('./backup')) { fs.mkdirSync('./backup'); }
@@ -74,30 +85,6 @@ if (!fs.existsSync('./logs/bobData.csv')) {
     fs.appendFile('./logs/bobData.csv', bobHeaders, (err) => { if (err) throw err; });
 }
 
-// Spawn the WebSocket connection info and start getting data
-logit(logger, `[STARTUP] Running bot using ${SHORT_PERIODS} and ${LONG_PERIODS}`);
-// startWebsocket();
-
-// Create the Authorized Client
-const authedClient = new AuthenticatedClient(
-    keychain.key,
-    keychain.secret,
-    keychain.passphrase,
-    'https://api.gdax.com'
-);
-
-// Create interval to store data, reset block, and report current status
-setInterval(() => {
-    // Promise chain to handle logic
-    handleBlock()
-        .then(() => writeBackup())
-        .then(() => calcAverages())
-        .then(averages => makeTradeDecision(averages))
-        // .then(decision => handleTradeDecision(decision))
-        .then(result => console.log(result))
-        .catch((err) => logit(logger, `[Promise Chain] ${err}`));
-}, 5000);
-
 
 /* ------------------------------------------
         START EXPRESS SERVER
@@ -108,6 +95,27 @@ app.get('/', (req, res) => {
 });
 
 app.listen(8080, () => logit(logger, '[WEB] App listening on 8080'));
+
+
+/* ------------------------------------------
+        BOT CORE LOGIC
+   ------------------------------------------ */
+
+// Spawn the WebSocket connection info and start getting data
+logit(logger, `[STARTUP] Running bot using ${SHORT_PERIODS} and ${LONG_PERIODS}`);
+// startWebsocket();
+
+// Create interval to store data, reset block, and report current status
+setInterval(() => {
+    // Promise chain to handle logic
+    handleBlock()
+    // .then(() => writeBackup())
+        .then(() => calcAverages())
+        .then(averages => makeTradeDecision(averages))
+        .then(decision => handleTradeDecision(decision))
+        .then(result => console.log(result))
+        .catch((err) => logit(logger, `[Promise Chain] ${err}`));
+}, 5000);
 
 
 /* ------------------------------------------
@@ -147,29 +155,25 @@ function handleBlock () {
             ]
         }*/
 
-        const btc = authedClient.getProductOrderBook("BTC-USD")
+        const btcPromise = authedClient.getProductOrderBook(BTC.ticker)
             .then(data => {
-                return BTC_DATA.unshift({
-                    startTime: moment().format('MM/DD/YYYY HH:mm:ss'),
-                    sequence: data.sequence,
-                    bid: parseFloat(data.bids[0][0]),
-                    ask: parseFloat(data.asks[0][0]),
-                });
+                const point = new Datum(data);
+                return BTC.addData(point);
             })
             .catch((err) => logit(logger, `[BTC GET] ${err}`));
 
-        const eth = authedClient.getProductOrderBook("ETH-USD")
-            .then(data => {
-                return ETH_DATA.unshift({
-                    startTime: moment().format('MM/DD/YYYY HH:mm:ss'),
-                    sequence: data.sequence,
-                    bid: parseFloat(data.bids[0][0]),
-                    ask: parseFloat(data.asks[0][0]),
-                });
-            })
-            .catch(err => logit(logger, `[ETH GET] ${err}`));
-
-        Promise.all([btc, eth])
+        // const eth = authedClient.getProductOrderBook("ETH-USD")
+        //     .then(data => {
+        //         return ETH_DATA.unshift({
+        //             startTime: moment().format('MM/DD/YYYY HH:mm:ss'),
+        //             sequence: data.sequence,
+        //             bid: parseFloat(data.bids[0][0]),
+        //             ask: parseFloat(data.asks[0][0]),
+        //         });
+        //     })
+        //     .catch(err => logit(logger, `[ETH GET] ${err}`));
+        //
+        Promise.all([btcPromise])
             .then(values => resolve(true))
             .catch(err => logit(logger, `[ALL GET] ${err}`));
     });
@@ -180,55 +184,40 @@ function calcAverages () {
     return new Promise((resolve, reject) => {
         logit(logger, `[calcAverages] Entering calcAverages`);
         // create the trailing arrays
-        const btc_short = BTC_DATA.slice(0,SHORT_PERIODS);
-        const btc_long = BTC_DATA.slice(0,LONG_PERIODS);
+        const btc_short = BTC.data.slice(0,SHORT_PERIODS);
+        const btc_long = BTC.data.slice(0,LONG_PERIODS);
+        let btc_short_total = null;
+        let btc_long_total = null;
+        let btc_short_avg = null;
+        let btc_long_avg = null;
 
-        const eth_short = ETH_DATA.slice(0,SHORT_PERIODS);
-        const eth_long = ETH_DATA.slice(0,LONG_PERIODS);
+        // if we have a position look at the asks
+        if (BTC.status) {
+            logit(logger, `[calcAverages] BTC.status = true >> looking at ASKS`);
+            btc_short_total = btc_short.reduce((sum, cur) => { return sum + cur.ask; }, 0);
+            btc_long_total = btc_long.reduce((sum, cur) => { return sum + cur.ask; }, 0);
+            btc_short_avg = Math.round(btc_short_total / SHORT_PERIODS * 100) / 100;
+            btc_long_avg = Math.round(btc_long_total / LONG_PERIODS * 100) / 100;
+        }
+        // if we do not, look at the bids
+        else {
+            logit(logger, `[calcAverages] BTC.status = false >> looking at BIDS`);
+            btc_short_total = btc_short.reduce((sum, cur) => { return sum + cur.bid; }, 0);
+            btc_long_total = btc_long.reduce((sum, cur) => { return sum + cur.bid; }, 0);
+            btc_short_avg = Math.round(btc_short_total / SHORT_PERIODS * 100) / 100;
+            btc_long_avg = Math.round(btc_long_total / LONG_PERIODS * 100) / 100;
+        }
 
-        // reduce the trailing arrays to the total
-        const btc_short_bids = btc_short.reduce((sum, cur) => { return sum + cur.bid; }, 0);
-        const btc_long_bids = btc_long.reduce((sum, cur) => { return sum + cur.bid; }, 0);
-        const btc_short_asks = btc_short.reduce((sum, cur) => { return sum + cur.ask; }, 0);
-        const btc_long_asks = btc_long.reduce((sum, cur) => { return sum + cur.ask; }, 0);
-
-        const eth_short_bids = eth_short.reduce((sum, cur) => { return sum + cur.bid; }, 0);
-        const eth_long_bids = eth_long.reduce((sum, cur) => { return sum + cur.bid; }, 0);
-        const eth_short_asks = eth_short.reduce((sum, cur) => { return sum + cur.ask; }, 0);
-        const eth_long_asks = eth_long.reduce((sum, cur) => { return sum + cur.ask; }, 0);
-
-        // average out the totals
-        const btc_short_bids_avg = Math.round(btc_short_bids / SHORT_PERIODS * 100) / 100;
-        const btc_long_bids_avg = Math.round(btc_long_bids / LONG_PERIODS * 100) / 100;
-        const btc_short_asks_avg = Math.round(btc_short_asks / SHORT_PERIODS * 100) / 100;
-        const btc_long_asks_avg = Math.round(btc_long_asks / LONG_PERIODS * 100) / 100;
-
-
-        const eth_short_bids_avg = Math.round(eth_short_bids / SHORT_PERIODS * 100) / 100;
-        const eth_long_bids_avg = Math.round(eth_long_bids / LONG_PERIODS * 100) / 100;
-        const eth_short_asks_avg = Math.round(eth_short_asks / SHORT_PERIODS * 100) / 100;
-        const eth_long_asks_avg = Math.round(eth_long_asks / LONG_PERIODS * 100) / 100;
-
-        logit(logger, `[calcAverages] BTC Short Bids MA: ${btc_short_bids_avg}`);
-        logit(logger, `[calcAverages] BTC Long Bids  MA: ${btc_long_bids_avg}`);
-        logit(logger, `[calcAverages] BTC Short Asks MA: ${btc_short_asks_avg}`);
-        logit(logger, `[calcAverages] BTC Long Asks  MA: ${btc_long_asks_avg}`);
-        logit(logger, `[calcAverages] ETH Short Bids MA: ${eth_short_bids_avg}`);
-        logit(logger, `[calcAverages] ETH Long Bids MA: ${eth_long_bids_avg}`);
-        logit(logger, `[calcAverages] ETH Short Asks MA: ${eth_short_asks_avg}`);
-        logit(logger, `[calcAverages] ETH Long Asks MA: ${eth_long_asks_avg}`);
+        logit(logger, `[calcAverages] BTC Short Total MA: ${btc_short_total}`);
+        logit(logger, `[calcAverages] BTC Long Total  MA: ${btc_long_total}`);
+        logit(logger, `[calcAverages] BTC Short Avg MA: ${btc_short_avg}`);
+        logit(logger, `[calcAverages] BTC Long Avg  MA: ${btc_long_avg}`);
         logit(logger, '* ------------------------------------------ *');
 
-        if (BTC_DATA.length > LONG_PERIODS && ETH_DATA > LONG_PERIODS) {
+        if (BTC.data.length > LONG_PERIODS) {
             resolve([
-                btc_short_bids_avg,
-                btc_long_bids_avg,
-                btc_short_asks_avg,
-                btc_long_asks_avg,
-                eth_short_bids_avg,
-                eth_long_bids_avg,
-                eth_short_asks_avg,
-                eth_long_asks_avg,
+                btc_short_avg,
+                btc_long_avg,
             ]);
         } else {
             reject('ARCHIVE not long enough');
@@ -242,30 +231,8 @@ function makeTradeDecision(avgArray) {
     return new Promise((resolve, reject) => {
         logit(logger, `[makeTradeDecision] Entering makeTradeDecision`);
 
-        let BTC_short = 0;
-        let BTC_long = 0;
-        let ETH_short = 0;
-        let ETH_long = 0;
-
-        if (BTC_STATUS) {
-            // asks
-            BTC_short = avgArray[2];
-            BTC_long = avgArray[3];
-        } else {
-            // bids
-            BTC_short = avgArray[0];
-            BTC_long = avgArray[1];
-        }
-
-        if (ETH_STATUS) {
-            // asks
-            ETH_short = avgArray[6];
-            ETH_long = avgArray[7];
-        } else {
-            // bids
-            ETH_short = avgArray[4];
-            ETH_long = avgArray[5];
-        }
+        // create move set
+        const BTC_move = avgArray[0] > avgArray[1];
 
         /*
             Short > Long = Market is going UP (want to have ETH), should have bought already
@@ -290,16 +257,12 @@ function makeTradeDecision(avgArray) {
                 False | False -> nothing
          */
 
-        // create move set
-        const BTC_move = BTC_short > BTC_long;
-        const ETH_move = ETH_short > ETH_long;
-
         // BTC Decision
         switch (BTC_move) {
 
             case true:
                 // >> check for InitialRound -> pass if it is
-                if (BTC_INITIAL) {
+                if (BTC.initial) {
                     logit(logger, `[makeTradeDecision] Ignored uptick since it's the initial round`);
 
                     reject({
@@ -312,8 +275,8 @@ function makeTradeDecision(avgArray) {
                 // True | True
                 // --> if properMove True, we should hold ETH (havePosition True)
                     // >> do nothing
-                if (BTC_STATUS) {
-                    logit(logger, `[makeTradeDecision] properMove ${BTC_move} | havePosition ${BTC_STATUS}`);
+                if (BTC.status) {
+                    logit(logger, `[makeTradeDecision] properMove ${BTC_move} | havePosition ${BTC.status}`);
                     logit(logger, `[makeTradeDecision] Price is going UP and we HAVE a position -> do nothing`);
 
                     reject({
@@ -326,7 +289,7 @@ function makeTradeDecision(avgArray) {
                     // >> should look at USD and send BUY order to convert to ETH
                     // >> set havePosition to True
                 else {
-                    logit(logger, `[makeTradeDecision] properMove ${BTC_move} | havePosition ${BTC_STATUS}`);
+                    logit(logger, `[makeTradeDecision] properMove ${BTC_move} | havePosition ${BTC.status}`);
                     logit(logger, `[makeTradeDecision] Price is going UP and we DO NOT HAVE a position -> buy BTC`);
 
                     resolve({
@@ -339,17 +302,17 @@ function makeTradeDecision(avgArray) {
 
             case false:
                 // >> check for InitialRound -> set to False since price is going down
-                if (STATUS.initialRound) {
+                if (BTC.initial) {
                     logit(logger, `[makeTradeDecision] Flipped Initial Round to false so next uptick is a clean buy`);
-                    STATUS.initialRound = false;
+                    BTC.status = false;
                 }
 
                 // False | True
                 // --> if properMove False, we should sell ETH (havePosition True -> make it False)
                     // >> should look at ETH and send SELL order to convert to USD
                     // >> set havePosition to False
-                if (STATUS.havePosition) {
-                    logit(logger, `[makeTradeDecision] properMove ${properMove} | havePosition ${STATUS.havePosition}`);
+                if (BTC.status) {
+                    logit(logger, `[makeTradeDecision] properMove ${BTC_move} | havePosition ${BTC.status}`);
 
                     resolve({
                         action: 'sell',
@@ -360,7 +323,7 @@ function makeTradeDecision(avgArray) {
                 // --> if properMove False, we should hold USD (havePosition False)
                     // >> do nothing
                 else {
-                    logit(logger, `[makeTradeDecision] properMove ${properMove} | havePosition ${STATUS.havePosition}`);
+                    logit(logger, `[makeTradeDecision] properMove ${BTC_move} | havePosition ${BTC.status}`);
 
                     reject({
                         action: 'none',
@@ -370,7 +333,7 @@ function makeTradeDecision(avgArray) {
                 break;
 
             default:
-                logit(logger, `[makeTradeDecision] properMove ${properMove} | havePosition ${STATUS.havePosition}`);
+                logit(logger, `[makeTradeDecision] properMove ${BTC_move} | havePosition ${BTC.status}`);
                 logit(logger, `[makeTradeDecision] makeTradeDecision was called but situation could not be handled`);
 
                 reject({
@@ -397,18 +360,18 @@ function handleTradeDecision (pDecisionObj) {
         // grab all relevant data, DRYs the code but is technically a little inefficient
         logit(logger, `[handleTradeDecision] Gathering data from Authed Client`);
         Promise.all([
-            authedClient.getProductOrderBook('ETH-USD'),
+            authedClient.getProductOrderBook(BTC.ticker),
             authedClient.getAccount(keychain.usdAccount),
-            authedClient.getAccount(keychain.ethAccount),
+            authedClient.getAccount(keychain.btcAccount),
         ])
             .then(results => {
                 const orderBook = results[0];
                 const usdAccount = results[1];
-                const ethAccount = results[2];
+                const btcAccount = results[2];
 
                 logit(logger, JSON.stringify(orderBook));
                 logit(logger, JSON.stringify(usdAccount));
-                logit(logger, JSON.stringify(ethAccount));
+                logit(logger, JSON.stringify(btcAccount));
 
                 switch (pDecisionObj.action) {
 
@@ -418,21 +381,24 @@ function handleTradeDecision (pDecisionObj) {
                         const buyParams = {
                             type: 'market',
                             side: 'buy',
-                            product_id: 'ETH-USD',
-                            funds: (usdAccount.available * 0.98).toFixed(2),
+                            product_id: BTC.ticker,
+                            funds: Math.round((usdAccount.available * 0.98) * 100) / 100,
                         };
                         logit(logger, JSON.stringify(buyParams));
 
+                        // @TODO THESE NUMBERS ARE FOR 1 COIN BASICALLY, NOT USING USD ACCOUNT BALANCE
+                        const buyPrice = Math.round(orderBook.asks[0][0] * 100) / 100;
+                        const buyFee = Math.round((buyPrice * 0.003) * 100) / 100;
+                        const buyTxn = new Transaction('buy', buyPrice, buyFee);
+                        BTC.addTxn(buyTxn);
 
-                        // @TODO THESE NUMBERS ARE FOR 1 ETH BASICALLY, NOT USING USD ACCOUNT BALANCE
-                        logit(logger, `[handleTradeDecision] Ask (Theoretical Buy Price): ${orderBook.asks[0][0]}`);
-                        STATUS.lastBuyPrice = orderBook.asks[0][0];
-                        STATUS.lastBuyCost = (STATUS.lastBuyPrice * 0.0025).toFixed(2);
-                        STATUS.totalFees += Number(STATUS.lastBuyCost);
-                        logit(logger, `[handleTradeDecision] Paid USD @ ${STATUS.lastBuyPrice}/ETH and ${STATUS.lastBuyCost} fee`);
+                        logit(logger, `[handleTradeDecision] Paid USD @ ${buyTxn.price}/coin and ${buyTxn.fee} fee`);
+                        logit(logger, `[handleTradeDecision] Total Transactions: ${BTC.txn.length}`);
+                        totalFees += buyFee;
 
-                        STATUS.havePosition = true;
-                        logit(logger, `[handleTradeDecision] havePosition is now ${STATUS.havePosition}`);
+                        // swap status to true since we bought
+                        BTC.status = true;
+                        logit(logger, `[handleTradeDecision] havePosition is now ${BTC.status}`);
                         break;
 
                     // Enter into Sell Logic
@@ -441,40 +407,37 @@ function handleTradeDecision (pDecisionObj) {
                         const sellParams = {
                             type: 'market',
                             side: 'sell',
-                            product_id: 'ETH-USD',
-                            size: ethAccount.available,
+                            product_id: BTC.ticker,
+                            size: btcAccount.available,
                         };
                         logit(logger, JSON.stringify(sellParams));
 
+                        // @TODO THESE NUMBERS ARE FOR 1 COIN BASICALLY, NOT USING USD ACCOUNT BALANCE
+                        const sellPrice = Math.round(orderBook.bids[0][0] * 100) / 100;
+                        const sellFee = Math.round((sellPrice * 0.003) * 100) / 100;
+                        const sellTxn = new Transaction('sell', sellPrice, sellFee);
+                        BTC.addTxn(sellTxn);
 
-                        // @TODO THESE NUMBERS ARE FOR 1 ETH BASICALLY, NOT USING USD ACCOUNT BALANCE
-                        logit(logger, `[handleTradeDecision] Bid (Theoretical Sell Price): ${orderBook.bids[0][0]}`);
-                        STATUS.lastSellPrice = orderBook.bids[0][0];
-                        STATUS.lastSellCost = (STATUS.lastSellPrice * 0.0025).toFixed(2);
-                        STATUS.totalFees += Number(STATUS.lastSellCost);
-                        logit(logger, `[handleTradeDecision] Sold for USD @ ${STATUS.lastSellPrice}/ETH and ${STATUS.lastSellCost} fee`);
+                        logit(logger, `[handleTradeDecision] Sold for USD @ ${sellTxn.price}/coin and ${sellTxn.fee} fee`);
+                        logit(logger, `[handleTradeDecision] Total Transactions: ${BTC.txn.length}`);
+                        totalFees += sellFee;
 
-                        STATUS.havePosition = false;
-                        logit(logger, `[handleTradeDecision] havePosition is now ${STATUS.havePosition}`);
+                        // swap status to true since we sold
+                        BTC.status = false;
+                        logit(logger, `[handleTradeDecision] havePosition is now ${BTC.status}`);
 
-                        const profit = STATUS.lastSellPrice - STATUS.lastSellCost - STATUS.lastBuyPrice - STATUS.lastBuyCost;
-                        STATUS.totalProfit += profit;
 
-                        logit(logger, `[handleTradeDecision] TX Profit: ${profit} | Total Profit: ${STATUS.totalProfit}`);
+                        // Calculate the profit since we sold stuff
+                        // use the transactions just to test each out
+                        // @TODO this could be cleaner obviously
+                        const boughtTxn = BTC.txn.slice(-2)[0];
+                        const soldTxn = BTC.txn.slice(-1)[0];
+                        const profit = soldTxn.price - soldTxn.fee - boughtTxn.price - boughtTxn.fee;
+                        totalProfit += profit;
 
-                        // Add the full cycle data to the History
-                        const fees = STATUS.lastSellCost + STATUS.lastBuyCost;
-                        const cycle = {
-                            time: moment().format('MM/DD/YYYY HH:mm:ss'),
-                            purchase: STATUS.lastBuyPrice,
-                            sale: STATUS.lastSellPrice,
-                            fees: fees,
-                            profit: profit,
-                            totalProfit: STATUS.totalProfit,
-                        };
-
-                        HISTORY.push(cycle);
-                        fs.appendFile('./logs/history.txt', JSON.stringify(cycle) + ',', (err) => { if (err) throw err; });
+                        logit(logger, `[handleTradeDecision] TX Profit: ${profit}`);
+                        logit(logger, `[handleTradeDecision] Total Profit: ${totalProfit}`);
+                        logit(logger, `[handleTradeDecision] Total Fees: ${totalFees}`);
                         break;
 
                     default:
@@ -490,21 +453,22 @@ function handleTradeDecision (pDecisionObj) {
 
 function generatePage() {
     logit(logger, `[generatePage] Entering generatePage`);
-    const snapshot = ARCHIVE.slice(0,5);
+    const snapshot = BTC.data.slice(0,12);
 
     let page = `<h1>CRYPTO BOT</h1>`;
     page += `<p>SHORT_PERIODS = ${SHORT_PERIODS}</p>`;
     page += `<p>LONG_PERIODS = ${LONG_PERIODS}</p>`;
     page += '<br>';
 
-    page += `<p>Profit (total): ${STATUS.totalProfit}</p>`;
-    page += `<p>Fees (total): ${STATUS.totalFees}</p>`;
-    page += `<p>Last Buy: ${STATUS.lastBuyPrice}</p>`;
-    page += `<p>Last Buy Fee: ${STATUS.lastBuyCost}</p>`;
-    page += `<p>Last Sell: ${STATUS.lastSellPrice}</p>`;
-    page += `<p>Last Sell Fee: ${STATUS.lastSellCost}</p>`;
-    page += `<p>Have position? ${STATUS.havePosition}</p>`;
-    page += `<p>Initial round? ${STATUS.initialRound}</p>`;
+
+    page += `<p>Have position? ${BTC.status}</p>`;
+    page += `<p>Initial round? ${BTC.initial}</p>`;
+    page += `<p>Data Length: ${BTC.data.length}</p>`;
+    page += `<p>Transactions: ${BTC.txn.length}</p>`;
+    page += '<br>';
+
+    page += `<p>Profit (total): ${totalProfit}</p>`;
+    page += `<p>Fees (total): ${totalFees}</p>`;
     page += '<br>';
 
     snapshot.forEach((each) => {
@@ -512,8 +476,8 @@ function generatePage() {
     });
     page += '<br>';
 
-    HISTORY.forEach((each) => {
-        page += `<p>Time: ${each.time} | Bought: ${each.purchase} | Sold: ${each.sale}  | Fees: ${each.fees} | Profit: ${each.profit} | Total: ${each.totalProfit} </p>`;
+    BTC.txn.forEach((each) => {
+        page += `<p>Time: ${each.timestamp} | Type: ${each.type} | Price: ${each.price}  | Fees: ${each.fee}</p>`;
     });
 
     return page;

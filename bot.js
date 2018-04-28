@@ -114,7 +114,15 @@ setInterval(() => {
         .then(averages => makeTradeDecision(averages))
         .then(decision => handleTradeDecision(decision))
         .then(result => console.log(result))
-        .catch((err) => logit(logger, `[Promise Chain] ${err}`));
+        .catch((err) => {
+            if (err.action) {
+                logit(logger, `[Promise Chain] Error.action: ${err.action}`);
+                logit(logger, `[Promise Chain] Error.action: ${err.message}`);
+            }
+            else {
+                logit(logger, `[Promise Chain] Error: ${err}`);
+            }
+        });
 }, 5000);
 
 
@@ -155,6 +163,7 @@ function handleBlock () {
             ]
         }*/
 
+        // @TODO need to handle case of empty/failed fetch
         const btcPromise = authedClient.getProductOrderBook(BTC.ticker)
             .then(data => {
                 const point = new Datum(data);
@@ -310,7 +319,7 @@ function makeTradeDecision(avgArray) {
                 // >> check for InitialRound -> set to False since price is going down
                 if (BTC.initial) {
                     logit(logger, `[makeTradeDecision] Flipped Initial Round to false so next uptick is a clean buy`);
-                    BTC.status = false;
+                    BTC.intial = false;
                 }
 
                 // False | True
@@ -354,7 +363,8 @@ function makeTradeDecision(avgArray) {
 function handleTradeDecision (pDecisionObj) {
     return new Promise((resolve, reject) => {
         logit(logger, `[handleTradeDecision] Entering handleTradeDecision`);
-        logit(logger, `[handleTradeDecision] Action is ${pDecisionObj.action}`);
+        logit(logger, `[handleTradeDecision] Action: ${pDecisionObj.action}`);
+        logit(logger, `[handleTradeDecision] Message: ${pDecisionObj.message}`);
 
         // if there is nothing for us to do, end processing to not waste time / resources
         if (pDecisionObj.action === 'none' || pDecisionObj === 'error') {
@@ -465,7 +475,6 @@ function generatePage() {
     page += `<p>SHORT_PERIODS = ${SHORT_PERIODS}</p>`;
     page += `<p>LONG_PERIODS = ${LONG_PERIODS}</p>`;
     page += '<br>';
-
 
     page += `<p>Have position? ${BTC.status}</p>`;
     page += `<p>Initial round? ${BTC.initial}</p>`;

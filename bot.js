@@ -113,14 +113,19 @@ setInterval(() => {
         .then(() => calcAverages())
         .then(averages => makeTradeDecision(averages))
         .then(decision => handleTradeDecision(decision))
-        .then(result => console.log(result))
+        .then(result => {
+            logit(logger, result);
+            logit(logger, '* ------------------------------------------ *');
+        })
         .catch((err) => {
             if (err.action) {
                 logit(logger, `[Promise Chain] Error.action: ${err.action}`);
-                logit(logger, `[Promise Chain] Error.action: ${err.message}`);
+                logit(logger, `[Promise Chain] Error.message: ${err.message}`);
+                logit(logger, '* ------------------------------------------ *');
             }
             else {
                 logit(logger, `[Promise Chain] Error: ${err}`);
+                logit(logger, '* ------------------------------------------ *');
             }
         });
 }, 5000);
@@ -227,7 +232,6 @@ function calcAverages () {
         logit(logger, `[calcAverages] BTC Long Total  MA: ${btc_long_total}`);
         logit(logger, `[calcAverages] BTC Short Avg MA: ${btc_short_avg}`);
         logit(logger, `[calcAverages] BTC Long Avg  MA: ${btc_long_avg}`);
-        logit(logger, '* ------------------------------------------ *');
 
         if (BTC.data.length > LONG_PERIODS) {
             resolve([
@@ -235,7 +239,8 @@ function calcAverages () {
                 btc_long_avg,
             ]);
         } else {
-            reject('ARCHIVE not long enough');
+            logit(logger, `[calcAverages] initial ${BTC.initial} | havePosition ${BTC.status}`);
+            reject('Data History not long enough');
         }
     });
 }
@@ -277,7 +282,8 @@ function makeTradeDecision(avgArray) {
 
             case true:
                 // >> check for InitialRound -> pass if it is
-                if (BTC.initial) {
+                if (BTC.initial === true) {
+                    logit(logger, `[makeTradeDecision] initial ${BTC.initial} | properMove ${BTC_move} | havePosition ${BTC.status}`);
                     logit(logger, `[makeTradeDecision] Ignored uptick since it's the initial round`);
 
                     reject({
@@ -291,7 +297,7 @@ function makeTradeDecision(avgArray) {
                 // --> if properMove True, we should hold ETH (havePosition True)
                     // >> do nothing
                 if (BTC.status) {
-                    logit(logger, `[makeTradeDecision] properMove ${BTC_move} | havePosition ${BTC.status}`);
+                    logit(logger, `[makeTradeDecision] initial ${BTC.initial} | properMove ${BTC_move} | havePosition ${BTC.status}`);
                     logit(logger, `[makeTradeDecision] Price is going UP and we HAVE a position -> do nothing`);
 
                     reject({
@@ -304,7 +310,7 @@ function makeTradeDecision(avgArray) {
                     // >> should look at USD and send BUY order to convert to ETH
                     // >> set havePosition to True
                 else {
-                    logit(logger, `[makeTradeDecision] properMove ${BTC_move} | havePosition ${BTC.status}`);
+                    logit(logger, `[makeTradeDecision] initial ${BTC.initial} | properMove ${BTC_move} | havePosition ${BTC.status}`);
                     logit(logger, `[makeTradeDecision] Price is going UP and we DO NOT HAVE a position -> buy BTC`);
 
                     resolve({
@@ -317,9 +323,10 @@ function makeTradeDecision(avgArray) {
 
             case false:
                 // >> check for InitialRound -> set to False since price is going down
-                if (BTC.initial) {
+                if (BTC.initial === true) {
+                    logit(logger, `[makeTradeDecision] initial ${BTC.initial} | properMove ${BTC_move} | havePosition ${BTC.status}`);
                     logit(logger, `[makeTradeDecision] Flipped Initial Round to false so next uptick is a clean buy`);
-                    BTC.intial = false;
+                    BTC.initial = false;
                 }
 
                 // False | True
@@ -327,7 +334,7 @@ function makeTradeDecision(avgArray) {
                     // >> should look at ETH and send SELL order to convert to USD
                     // >> set havePosition to False
                 if (BTC.status) {
-                    logit(logger, `[makeTradeDecision] properMove ${BTC_move} | havePosition ${BTC.status}`);
+                    logit(logger, `[makeTradeDecision] initial ${BTC.initial} | properMove ${BTC_move} | havePosition ${BTC.status}`);
 
                     resolve({
                         action: 'sell',
@@ -338,7 +345,7 @@ function makeTradeDecision(avgArray) {
                 // --> if properMove False, we should hold USD (havePosition False)
                     // >> do nothing
                 else {
-                    logit(logger, `[makeTradeDecision] properMove ${BTC_move} | havePosition ${BTC.status}`);
+                    logit(logger, `[makeTradeDecision] initial ${BTC.initial} | properMove ${BTC_move} | havePosition ${BTC.status}`);
 
                     reject({
                         action: 'none',
@@ -348,7 +355,7 @@ function makeTradeDecision(avgArray) {
                 break;
 
             default:
-                logit(logger, `[makeTradeDecision] properMove ${BTC_move} | havePosition ${BTC.status}`);
+                logit(logger, `[makeTradeDecision] initial ${BTC.initial} | properMove ${BTC_move} | havePosition ${BTC.status}`);
                 logit(logger, `[makeTradeDecision] makeTradeDecision was called but situation could not be handled`);
 
                 reject({

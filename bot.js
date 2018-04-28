@@ -94,6 +94,10 @@ app.get('/', (req, res) => {
     res.send(generatePage());
 });
 
+app.get('/debug', (req, res) => {
+    res.sendFile('./logs/debug.txt', { root : __dirname});
+});
+
 app.listen(8080, () => logit(logger, '[WEB] App listening on 8080'));
 
 
@@ -422,6 +426,7 @@ function handleTradeDecision (pDecisionObj) {
                         // swap status to true since we bought
                         BTC.status = true;
                         logit(logger, `[handleTradeDecision] havePosition is now ${BTC.status}`);
+                        resolve(`[handleTradeDecision] Purchase completely processed`);
                         break;
 
                     // Enter into Sell Logic
@@ -461,10 +466,11 @@ function handleTradeDecision (pDecisionObj) {
                         logit(logger, `[handleTradeDecision] TX Profit: ${profit}`);
                         logit(logger, `[handleTradeDecision] Total Profit: ${totalProfit}`);
                         logit(logger, `[handleTradeDecision] Total Fees: ${totalFees}`);
+                        resolve(`[handleTradeDecision] Sale completely processed`);
                         break;
 
                     default:
-                        logit(logger, `[handleTradeDecision] No action could be read from DecisionObject`);
+                        reject(`[handleTradeDecision] No action could be read from DecisionObject`);
                         return;
                 }
             })

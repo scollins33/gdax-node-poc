@@ -95,7 +95,7 @@ app.get('/', (req, res) => {
 });
 
 app.get('/debug', (req, res) => {
-    res.sendFile('./logs/debug.txt', { root : __dirname});
+    res.download('/logs/debug.txt', 'debug.txt', { root : __dirname});
 });
 
 app.listen(8080, () => logit(logger, '[WEB] App listening on 8080'));

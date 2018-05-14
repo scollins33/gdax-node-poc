@@ -29,8 +29,8 @@ else if (SHORT_PERIODS >= LONG_PERIODS) {
     console.log(`[HELP] Short Periods must be less than Long Periods`);
     process.exit(1);
 }
-else if (SHORT_PERIODS > 4319 || LONG_PERIODS > 4320) {
-    console.log(`[HELP] Moving average lengths cannot exceed 4320`);
+else if (SHORT_PERIODS > 2899 || LONG_PERIODS > 2900) {
+    console.log(`[HELP] Moving average lengths cannot exceed 2900`);
     process.exit(1);
 }
 
@@ -132,7 +132,7 @@ setInterval(() => {
                 logit(logger, '* ------------------------------------------ *');
             }
         });
-}, 5000);
+}, 30000);
 
 
 /* ------------------------------------------
@@ -178,7 +178,7 @@ function handleBlock () {
                 const point = new Datum(data);
 
                 BTC.addData(point);
-                if (BTC.data.length > 4320) { BTC.removeData(); }
+                if (BTC.data.length > 2900) { BTC.removeData(); }
 
                 return true;
             })

@@ -1,9 +1,10 @@
 class Currency {
-    constructor(pName, pTicker) {
+    constructor(pName, pTicker, pAccount) {
         this.name = pName;
         this.ticker = pTicker;
         this.initial = true;
         this.status = false;
+        this.account = pAccount;
         this.data = [];
         this.txn = [];
     }

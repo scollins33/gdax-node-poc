@@ -1,6 +1,12 @@
 {
   "dependencies": {
+<<<<<<< HEAD
     "gdax": "^0.5.1"
+=======
+    "express": "^4.16.2",
+    "gdax": "^0.5.1",
+    "moment": "^2.21.0"
+>>>>>>> b1deef727b7449ec7005cf03567287ce3be9f51c
   },
   "devDependencies": {},
   "name": "gdax-node-poc",

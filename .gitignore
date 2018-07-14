@@ -1,15 +1,19 @@
+# dev env stuff
 .idea/*
 /node_modules
 node_modules/*
 package-lock.json
 .DS_Store
 .eslintrc.js
+yarn-error.log
 
+# project related
 logs/*
 backup/*
 keychain.txt
 api_info.txt
 
+# other project related
 testmodule.js
 bobData.txt
 bobData.csv

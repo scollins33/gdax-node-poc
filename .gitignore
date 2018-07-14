@@ -4,6 +4,9 @@ node_modules/*
 package-lock.json
 .DS_Store
 .eslintrc.js
+<<<<<<< HEAD
+logs/*
+=======
 
 logs/*
 backup/*
@@ -13,3 +16,4 @@ api_info.txt
 testmodule.js
 bobData.txt
 bobData.csv
+>>>>>>> b1deef727b7449ec7005cf03567287ce3be9f51c

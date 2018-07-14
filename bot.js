@@ -71,6 +71,7 @@ if (!fs.existsSync('./logs/debug.txt')) {
 const logger = fs.createWriteStream('./logs/debug.txt');
 
 // Check for backup and load it
+// @TODO This does not function as it is
 if (fs.existsSync('./backup/archive.txt')) {
     logit(logger, '[STARTUP] Found backup file, setting ARCHIVE to backup and updating BLOCKID');
     ARCHIVE = JSON.parse(fs.readFileSync('./backup/archive.txt', 'utf8'));
@@ -80,6 +81,7 @@ if (fs.existsSync('./backup/archive.txt')) {
 }
 
 // Check for bobData and create it if not
+// @TODO Convert this to a long-term history
 if (!fs.existsSync('./logs/bobData.csv')) {
     const bobHeaders = `Block_ID,Start_Time,Number_Matches,Volume,Summation_Strike_Price,Weighted_Average,Low,High,Bid_Price,Ask_Price,\n`;
     fs.appendFile('./logs/bobData.csv', bobHeaders, (err) => { if (err) throw err; });
@@ -105,15 +107,16 @@ app.listen(8080, () => logit(logger, '[WEB] App listening on 8080'));
         BOT CORE LOGIC
    ------------------------------------------ */
 
-// Spawn the WebSocket connection info and start getting data
+// Log that we're starting
+// Used to generate the Websocket connection here
+// Now were just pull the data every interval
 logit(logger, `[STARTUP] Running bot using ${SHORT_PERIODS} and ${LONG_PERIODS}`);
-// startWebsocket();
 
 // Create interval to store data, reset block, and report current status
 // run once for each currency we want to trade
 const BTC_interval = setInterval(() => {
     // Promise chain to handle logic
-    handleBlock(BTC)
+    pullData(BTC)
     // .then(() => writeBackup())
         .then(() => calcAverages(BTC))
         .then(averages => decideAction(BTC, averages))
@@ -138,7 +141,7 @@ const BTC_interval = setInterval(() => {
 
 const ETH_interval = setInterval(() => {
     // Promise chain to handle logic
-    handleBlock(ETH)
+    pullData(ETH)
     // .then(() => writeBackup())
         .then(() => calcAverages(ETH))
         .then(averages => decideAction(ETH, averages))
@@ -193,9 +196,9 @@ function writeBackup () {
 
 // Deal with storage of the block and catch empty/trouble blocks in case of connection loss
 // @TODO need to handle case of empty/failed fetch
-function handleBlock (pCurrency) {
+function pullData (pCurrency) {
     return new Promise((resolve, reject) => {
-        logit(logger, `[handleBlock | ${pCurrency.ticker}] Entering handleBlock`);
+        logit(logger, `[pullData | ${pCurrency.ticker}] Entering pullData`);
         authedClient.getProductOrderBook(pCurrency.ticker)
             .then(data => {
                 const point = new Datum(data);

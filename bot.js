@@ -18,19 +18,24 @@ const Datum = require('./classes/datum');
 /* ------------------------------------------
         SCRIPT STARTUP CHECKS
    ------------------------------------------ */
-const SHORT_PERIODS = parseInt(process.argv[2]);
-const LONG_PERIODS = parseInt(process.argv[3]);
+const POLLING = parseInt(process.argv[2]);
+const SHORT_PERIODS = parseInt(process.argv[3]);
+const LONG_PERIODS = parseInt(process.argv[4]);
 
-if (isNaN(SHORT_PERIODS) || isNaN(LONG_PERIODS)) {
-    console.log(`[HELP] Proper usage:  node bot.js short_period long_period`);
+if (isNaN(POLLING) || isNaN(SHORT_PERIODS) || isNaN(LONG_PERIODS)) {
+    console.log(`[HELP] Proper usage:  node bot.js [polling_rate] [short_period] [long_period]`);
+    process.exit(1);
+}
+else if (POLLING < 5000) {
+    console.log(`[HELP] Polling Rate cannot be les than 5000 milliseconds`);
     process.exit(1);
 }
 else if (SHORT_PERIODS >= LONG_PERIODS) {
     console.log(`[HELP] Short Periods must be less than Long Periods`);
     process.exit(1);
 }
-else if (SHORT_PERIODS > 2899 || LONG_PERIODS > 2900) {
-    console.log(`[HELP] Moving average lengths cannot exceed 2900`);
+else if (LONG_PERIODS > 4320) {
+    console.log(`[HELP] Backup is hard-coded for 4320 points, Long Periods cannot exceed it`);
     process.exit(1);
 }
 
@@ -50,8 +55,20 @@ const authedClient = new AuthenticatedClient(
 );
 
 // Create the currencies
-const BTC = new Currency('Bitcoin', 'BTC-USD', keychain.btcAccount);
-const ETH = new Currency('Ethereum', 'ETH-USD', keychain.ethAccount);
+const BTC = new Currency(
+    'Bitcoin',
+    'BTC-USD',
+    keychain.btcAccount,
+    './logs/btcBackup.json',
+    './logs/btcHistory.json'
+    );
+const ETH = new Currency(
+    'Ethereum',
+    'ETH-USD',
+    keychain.ethAccount,
+    './logs/ethBackup.json',
+    './logs/ethHistory.json'
+);
 
 let totalProfit = 0;
 let totalFees = 0;
@@ -64,28 +81,17 @@ let totalFees = 0;
 if (!fs.existsSync('./backup')) { fs.mkdirSync('./backup'); }
 if (!fs.existsSync('./logs')) { fs.mkdirSync('./logs'); }
 
-// create logs file if needed and start logging stream
-if (!fs.existsSync('./logs/debug.txt')) {
-    fs.closeSync(fs.openSync('./logs/debug.txt', 'w'));
-}
+// create logs file if needed and open logging stream
+if (!fs.existsSync('./logs/debug.txt')) { fs.writeFileSync('./logs/debug.txt', ''); }
 const logger = fs.createWriteStream('./logs/debug.txt');
 
-// Check for backup and load it
-// @TODO This does not function as it is
-if (fs.existsSync('./backup/archive.txt')) {
-    logit(logger, '[STARTUP] Found backup file, setting ARCHIVE to backup and updating BLOCKID');
-    ARCHIVE = JSON.parse(fs.readFileSync('./backup/archive.txt', 'utf8'));
-    BLOCKID = ARCHIVE[0].blockID;
-    BLOCKID++;
-    currentBlock.blockID = BLOCKID;
-}
-
-// Check for bobData and create it if not
-// @TODO Convert this to a long-term history
-if (!fs.existsSync('./logs/bobData.csv')) {
-    const bobHeaders = `Block_ID,Start_Time,Number_Matches,Volume,Summation_Strike_Price,Weighted_Average,Low,High,Bid_Price,Ask_Price,\n`;
-    fs.appendFile('./logs/bobData.csv', bobHeaders, (err) => { if (err) throw err; });
-}
+// Check for JSON storage and create it if not
+// backup = short term to load in and graph
+// history = long term for studies
+if (!fs.existsSync('./logs/btcBackup.json')) { fs.writeFileSync('./logs/btcBackup.json', '[]'); }
+if (!fs.existsSync('./logs/btcHistory.json')) { fs.writeFileSync('./logs/btcHistory.json', ''); }
+if (!fs.existsSync('./logs/ethBackup.json')) { fs.writeFileSync('./logs/ethBackup.json', '[]'); }
+if (!fs.existsSync('./logs/ethHistory.json')) { fs.writeFileSync('./logs/ethHistory.json', ''); }
 
 
 /* ------------------------------------------
@@ -100,7 +106,7 @@ app.get('/debug', (req, res) => {
     res.download('/logs/debug.txt', 'debug.txt', { root: __dirname });
 });
 
-app.listen(8080, () => logit(logger, '[WEB] App listening on 8080'));
+app.listen(9033, () => logit(logger, '[WEB] App listening on 9033'));
 
 
 /* ------------------------------------------
@@ -109,15 +115,17 @@ app.listen(8080, () => logit(logger, '[WEB] App listening on 8080'));
 
 // Log that we're starting
 // Used to generate the Websocket connection here
-// Now were just pull the data every interval
+// Now we're just pull the data every interval
 logit(logger, `[STARTUP] Running bot using ${SHORT_PERIODS} and ${LONG_PERIODS}`);
 
-// Create interval to store data, reset block, and report current status
+// Create interval to pull and store data, reset block, and report current status
 // run once for each currency we want to trade
+// Interval is set to the global POLLING
+
 const BTC_interval = setInterval(() => {
     // Promise chain to handle logic
     pullData(BTC)
-    // .then(() => writeBackup())
+        .then((data) => writeBackup(BTC, data))
         .then(() => calcAverages(BTC))
         .then(averages => decideAction(BTC, averages))
         .then(decision => handleAction(BTC, decision))
@@ -136,13 +144,13 @@ const BTC_interval = setInterval(() => {
                 logit(logger, '* ------------------------------------------ *');
             }
         });
-}, 30000);
+}, POLLING);
 
 
 const ETH_interval = setInterval(() => {
     // Promise chain to handle logic
     pullData(ETH)
-    // .then(() => writeBackup())
+        .then((data) => writeBackup(ETH, data))
         .then(() => calcAverages(ETH))
         .then(averages => decideAction(ETH, averages))
         .then(decision => handleAction(ETH, decision))
@@ -161,7 +169,7 @@ const ETH_interval = setInterval(() => {
                 logit(logger, '* ------------------------------------------ *');
             }
         });
-}, 30000);
+}, POLLING);
 
 
 /* ------------------------------------------
@@ -175,22 +183,30 @@ function logit (pStream, pMessage) {
 }
 
 // Helper to write backup of archive
-function writeBackup () {
-    logit(logger, `[writeBackup] Entering writeBackup`);
-    fs.writeFile('./backup/btc_data.txt', JSON.stringify(BTC.data), 'utf8', (err) => {
-        if (err) { logit(logger, `[writeBackup] ${err}`); }
-    });
+function writeBackup (pCurrency, pData) {
+    return new Promise((resolve, reject) => {
+        logit(logger, `[writeBackup | ${pCurrency.ticker}] Entering writeBackup`);
 
-    fs.writeFile('./backup/btc_txn.txt', JSON.stringify(BTC.txn), 'utf8', (err) => {
-        if (err) { logit(logger, `[writeBackup] ${err}`); }
-    });
+        // read in backup then write new backup
+        // 4320 = 3 days of data @ 1 minute polling
+        fs.readFile(pCurrency.backup, 'utf-8', (err, data) => {
+            if (err) { reject("backup | " + err) }
 
-    fs.writeFile('./backup/eth_data.txt', JSON.stringify(ETH.data), 'utf8', (err) => {
-        if (err) { logit(logger, `[writeBackup] ${err}`); }
-    });
+            let backup = JSON.parse(data);
+            backup.unshift(pData);
+            if (backup.length >= 4320) { backup.pop(); }
 
-    fs.writeFile('./backup/eth_txn.txt', JSON.stringify(ETH.txn), 'utf8', (err) => {
-        if (err) { logit(logger, `[writeBackup] ${err}`); }
+            fs.writeFile(pCurrency.backup, JSON.stringify(backup), (err) => {
+                if (err) { reject(err) }
+            });
+        });
+
+        // open the history file and append data (non-array)
+        fs.appendFile(pCurrency.history, JSON.stringify(pData) + ',', (err) => {
+            if (err) { reject(err) }
+        });
+
+        resolve(true);
     });
 }
 
@@ -203,10 +219,12 @@ function pullData (pCurrency) {
             .then(data => {
                 const point = new Datum(data);
 
+                // add the point to the currency array
                 pCurrency.addData(point);
-                if (pCurrency.data.length > 2900) { pCurrency.removeData(); }
+                // remove the oldest point since we don't need to be longer than desired
+                if (pCurrency.data.length >= LONG_PERIODS) { pCurrency.removeData(); }
 
-                resolve(true);
+                resolve(point);
             })
             .catch(err => {
                 logit(logger, `[${pCurrency.ticker} GET] ${err}`);
@@ -216,6 +234,7 @@ function pullData (pCurrency) {
 }
 
 // Compute and compare moving averages, report on current trend
+// since Datum stores both the bid and ask we can calc on the fly
 function calcAverages (pCurrency) {
     return new Promise((resolve, reject) => {
         const name = pCurrency.ticker;

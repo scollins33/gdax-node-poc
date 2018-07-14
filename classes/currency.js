@@ -1,5 +1,5 @@
 class Currency {
-    constructor(pName, pTicker, pAccount) {
+    constructor(pName, pTicker, pAccount, pBackupFile, pHistoryFile) {
         this.name = pName;
         this.ticker = pTicker;
         this.initial = true;
@@ -7,6 +7,8 @@ class Currency {
         this.account = pAccount;
         this.data = [];
         this.txn = [];
+        this.backup = pBackupFile;
+        this.history = pHistoryFile;
     }
 
     addData(pPoint) {

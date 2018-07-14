@@ -1,66 +1,18 @@
-<<<<<<< HEAD
-// Their GTT module - for multiple exchanges
-// written with TypeScript but JS can be used
-// const GTT = require('gdax-trading-toolkit');
-// const { Core, Exchanges, Factories } = require('gdax-trading-toolkit');
-
-/* GDAX Message
-{
-    type: 'match',
-    trade_id: 28774734,
-    maker_order_id: '51771fe1-f811-48a5-a855-5715d3d8026d',
-    taker_order_id: '34aaf681-6bfb-4e6b-8f5a-c98b5ce8d7fc',
-    side: 'buy',
-    size: '0.95000000',
-    price: '766.24000000',
-    product_id: 'ETH-USD',
-    sequence: 2438925935,
-    time: '2018-02-08T01:15:16.110000Z'
-} */
-
-/* Weighted Average calc
-4.5 @ 300 = 1350
-2.0 @ 310 = 620
-2.0 * 310 + 300 * 4.5 = 1970
-1970 / 6.5 = 303.08
-*/
-
-
 /* ------------------------------------------
         REQUIRED PACKAGES
    ------------------------------------------ */
-
-// Their GDAX-only node module
-const GDAX = require('gdax');
-const { PublicClient, WebsocketClient, AuthenticatedClient } = require('gdax');
-const CustomWS = require('./lib/websocket');
-const fs = require('fs');
-
-
-/* ------------------------------------------
-        GLOBALS
-   ------------------------------------------ */
-
-// create file if needed and start logging stream
-if (!fs.existsSync('./logs/test.txt')) {
-    fs.closeSync(fs.openSync('./logs/test.txt', 'w'));
-}
-const logStream = fs.createWriteStream('./logs/test.txt');
-
-// create the archive array and initial block
-let archive = [];
-
-let BLOCKID = 1;
-let currentBlock = {
-    blockID: BLOCKID,
-=======
-/* ------------------------------------------
-        REQUIRED PACKAGES
-   ------------------------------------------ */
-const { WebsocketClient, AuthenticatedClient } = require('gdax');
+const { AuthenticatedClient } = require('gdax');
 const fs = require('fs');
 const express = require('express');
 const moment = require('moment');
+
+
+/* ------------------------------------------
+        IMPORT CLASSES
+   ------------------------------------------ */
+const Currency = require('./classes/currency');
+const Transaction = require('./classes/transaction');
+const Datum = require('./classes/datum');
 
 
 /* ------------------------------------------
@@ -77,8 +29,8 @@ else if (SHORT_PERIODS >= LONG_PERIODS) {
     console.log(`[HELP] Short Periods must be less than Long Periods`);
     process.exit(1);
 }
-else if (SHORT_PERIODS > 1919 || LONG_PERIODS > 1920) {
-    console.log(`[HELP] Moving average lengths cannot exceed 1920`);
+else if (SHORT_PERIODS > 2899 || LONG_PERIODS > 2900) {
+    console.log(`[HELP] Moving average lengths cannot exceed 2900`);
     process.exit(1);
 }
 
@@ -89,67 +41,24 @@ const keychain = JSON.parse(fs.readFileSync('keychain.txt', 'utf8'));
         GLOBALS
    ------------------------------------------ */
 
-let ARCHIVE = [];
-let HISTORY = [];
-let BLOCKID = 1;
-let BLANKS = 0;
+// Create the Authorized Client
+const authedClient = new AuthenticatedClient(
+    keychain.key,
+    keychain.secret,
+    keychain.passphrase,
+    'https://api.gdax.com'
+);
 
-let currentBlock = {
-    blockID: BLOCKID,
-    startTime: moment().format('MM/DD/YYYY HH:mm:ss'),
->>>>>>> b1deef727b7449ec7005cf03567287ce3be9f51c
-    matches: 0,
-    volume: 0.0,
-    sumStrike: 0.0,
-    weightAvg: 0.0,
-    low: null,
-    high: null
-};
+// Create the currencies
+const BTC = new Currency('Bitcoin', 'BTC-USD', keychain.btcAccount);
+const ETH = new Currency('Ethereum', 'ETH-USD', keychain.ethAccount);
 
-<<<<<<< HEAD
-// Spawn the websocket connection info and start getting data
-startWS();
-
-/* ------------------------------------------
-        CORE FUNCTIONALITY
-   ------------------------------------------ */
-
-function startWS () {
-    logit(`[DEBUG] Creating Websocket connection and handlers`);
-    // use custom Websocket Client to change what channels are being sub'd to
-    let wsCustom = new CustomWS(['ETH-USD']);
-
-    wsCustom.on('message', data => {
-        if (data.type === 'match') {
-            handleInfo(data, currentBlock);
-        }
-    });
-    wsCustom.on('error', err => { logStream.write(err) });
-    
-    wsCustom.on('close', () => { startWS() });
-}
-
-// Create interval to store data, reset block, and report current status
-// Interval should run every minute to create 1-minute blocks
-setInterval(() => {
-    currentBlock = handleBlock(currentBlock);
-}, 60000);
-=======
-const STATUS = {
-    totalProfit: 0.00,
-    totalFees: 0.00,
-    lastBuyPrice: 0.00,
-    lastBuyCost: 0.00,
-    lastSellPrice: 0.00,
-    lastSellCost: 0.00,
-    havePosition: false,
-    initialRound: true,
-    lastOrder: "",
-};
+let totalProfit = 0;
+let totalFees = 0;
 
 
 /* ------------------------------------------
-        START BOT FUNCTIONS
+        BOT START UP CHECKS
    ------------------------------------------ */
 // Check for backup and logs folders, then create them if missing
 if (!fs.existsSync('./backup')) { fs.mkdirSync('./backup'); }
@@ -162,6 +71,7 @@ if (!fs.existsSync('./logs/debug.txt')) {
 const logger = fs.createWriteStream('./logs/debug.txt');
 
 // Check for backup and load it
+// @TODO This does not function as it is
 if (fs.existsSync('./backup/archive.txt')) {
     logit(logger, '[STARTUP] Found backup file, setting ARCHIVE to backup and updating BLOCKID');
     ARCHIVE = JSON.parse(fs.readFileSync('./backup/archive.txt', 'utf8'));
@@ -171,34 +81,11 @@ if (fs.existsSync('./backup/archive.txt')) {
 }
 
 // Check for bobData and create it if not
+// @TODO Convert this to a long-term history
 if (!fs.existsSync('./logs/bobData.csv')) {
     const bobHeaders = `Block_ID,Start_Time,Number_Matches,Volume,Summation_Strike_Price,Weighted_Average,Low,High,Bid_Price,Ask_Price,\n`;
     fs.appendFile('./logs/bobData.csv', bobHeaders, (err) => { if (err) throw err; });
 }
-
-// Spawn the WebSocket connection info and start getting data
-logit(logger, `[STARTUP] Running bot using ${SHORT_PERIODS} and ${LONG_PERIODS}`);
-startWebsocket();
-
-// Create the Authorized Client
-const authedClient = new AuthenticatedClient(
-    keychain.key,
-    keychain.secret,
-    keychain.passphrase,
-    'https://api.gdax.com'
-);
-
-// Create interval to store data, reset block, and report current status
-setInterval(() => {
-    // Promise chain to handle logic
-    handleBlock(currentBlock)
-        .then(() => writeBackup())
-        .then(() => calcAverages())
-        .then(averages => makeTradeDecision(averages))
-        .then(decision => handleTradeDecision(decision))
-        .then(result => console.log(result))
-        .catch((err) => logit(logger, `[Promise Chain] ${err}`));
-}, 15000);
 
 
 /* ------------------------------------------
@@ -209,40 +96,77 @@ app.get('/', (req, res) => {
     res.send(generatePage());
 });
 
+app.get('/debug', (req, res) => {
+    res.download('/logs/debug.txt', 'debug.txt', { root: __dirname });
+});
+
 app.listen(8080, () => logit(logger, '[WEB] App listening on 8080'));
->>>>>>> b1deef727b7449ec7005cf03567287ce3be9f51c
+
+
+/* ------------------------------------------
+        BOT CORE LOGIC
+   ------------------------------------------ */
+
+// Log that we're starting
+// Used to generate the Websocket connection here
+// Now were just pull the data every interval
+logit(logger, `[STARTUP] Running bot using ${SHORT_PERIODS} and ${LONG_PERIODS}`);
+
+// Create interval to store data, reset block, and report current status
+// run once for each currency we want to trade
+const BTC_interval = setInterval(() => {
+    // Promise chain to handle logic
+    pullData(BTC)
+    // .then(() => writeBackup())
+        .then(() => calcAverages(BTC))
+        .then(averages => decideAction(BTC, averages))
+        .then(decision => handleAction(BTC, decision))
+        .then(result => {
+            logit(logger, result);
+            logit(logger, '* ------------------------------------------ *');
+        })
+        .catch((err) => {
+            if (err.action) {
+                logit(logger, `[Promise Chain | ${BTC.ticker}] Error.action: ${err.action}`);
+                logit(logger, `[Promise Chain | ${BTC.ticker}] Error.message: ${err.message}`);
+                logit(logger, '* ------------------------------------------ *');
+            }
+            else {
+                logit(logger, `[Promise Chain | ${BTC.ticker}] Error: ${err}`);
+                logit(logger, '* ------------------------------------------ *');
+            }
+        });
+}, 30000);
+
+
+const ETH_interval = setInterval(() => {
+    // Promise chain to handle logic
+    pullData(ETH)
+    // .then(() => writeBackup())
+        .then(() => calcAverages(ETH))
+        .then(averages => decideAction(ETH, averages))
+        .then(decision => handleAction(ETH, decision))
+        .then(result => {
+            logit(logger, result);
+            logit(logger, '* ------------------------------------------ *');
+        })
+        .catch((err) => {
+            if (err.action) {
+                logit(logger, `[Promise Chain | ${ETH.ticker}] Error.action: ${err.action}`);
+                logit(logger, `[Promise Chain | ${ETH.ticker}] Error.message: ${err.message}`);
+                logit(logger, '* ------------------------------------------ *');
+            }
+            else {
+                logit(logger, `[Promise Chain | ${ETH.ticker}] Error: ${err}`);
+                logit(logger, '* ------------------------------------------ *');
+            }
+        });
+}, 30000);
 
 
 /* ------------------------------------------
         HELPER FUNCTIONS
    ------------------------------------------ */
-
-<<<<<<< HEAD
-// Helper function to consolelog and writelog
-function logit (pMessage) {
-    console.log(pMessage);
-    logStream.write(pMessage + ' \n');
-=======
-// WebSocket connection to get data, recursive in case closure happens
-function startWebsocket () {
-    logit(logger, `[BOT] Creating Websocket connection and handlers`);
-
-    let websocket = new WebsocketClient(
-        ['ETH-USD'],
-        'wss://ws-feed.gdax.com',
-        null,
-        { channels: ['heartbeat', 'matches'] }
-        );
-
-    websocket.on('message', data => {
-        if (data.type === 'match') {
-            handleInfo(data, currentBlock);
-        }
-    });
-    websocket.on('error', err => { logit(logger, `[BOT-WebSocket] ${err}`); });
-
-    websocket.on('close', () => { startWebsocket() });
-}
 
 // Helper function to consolelog and writelog
 function logit (pStream, pMessage) {
@@ -253,480 +177,336 @@ function logit (pStream, pMessage) {
 // Helper to write backup of archive
 function writeBackup () {
     logit(logger, `[writeBackup] Entering writeBackup`);
-    fs.writeFile('./backup/archive.txt', JSON.stringify(ARCHIVE), 'utf8', (err) => {
+    fs.writeFile('./backup/btc_data.txt', JSON.stringify(BTC.data), 'utf8', (err) => {
         if (err) { logit(logger, `[writeBackup] ${err}`); }
     });
->>>>>>> b1deef727b7449ec7005cf03567287ce3be9f51c
-}
 
-// Parse new data and update current block
-function handleInfo (pData, pBlock) {
-<<<<<<< HEAD
-    const tradePrice = parseFloat(pData.price);
-    const tradeSize = parseFloat(pData.size);
-
-    // increment matches and add volume to total
-    // calculate the new weighted average of the block
-    pBlock.matches++;
-    pBlock.volume += tradeSize;
-    pBlock.sumStrike += (tradePrice * tradeSize);
-    pBlock.weightAvg = pBlock.sumStrike / pBlock.volume;
-
-    // check if this is a new high or low
-    // null check to handle new block
-    if (pBlock.low === null && pBlock.high === null) {
-        pBlock.low = tradePrice;
-        pBlock.high = tradePrice;
-    }
-    else if (tradePrice < pBlock.low) {
-        pBlock.low = tradePrice;
-    }
-    else if (tradePrice > pBlock.high) {
-        pBlock.high = tradePrice;
-    }
-=======
-    return new Promise((resolve, reject) => {
-        const tradePrice = parseFloat(pData.price);
-        const tradeSize = parseFloat(pData.size);
-
-        // increment matches and add volume to total
-        pBlock.matches++;
-
-        // calculate the new weighted average of the block
-        pBlock.volume += tradeSize;
-        pBlock.sumStrike += (tradePrice * tradeSize);
-        pBlock.weightAvg = pBlock.sumStrike / pBlock.volume;
-
-        // check if this is a new high or low
-        // null check to handle new block
-        if (pBlock.low === null && pBlock.high === null) {
-            pBlock.low = tradePrice;
-            pBlock.high = tradePrice;
-        }
-        else if (tradePrice < pBlock.low) {
-            pBlock.low = tradePrice;
-        }
-        else if (tradePrice > pBlock.high) {
-            pBlock.high = tradePrice;
-        }
-
-        resolve(true);
+    fs.writeFile('./backup/btc_txn.txt', JSON.stringify(BTC.txn), 'utf8', (err) => {
+        if (err) { logit(logger, `[writeBackup] ${err}`); }
     });
->>>>>>> b1deef727b7449ec7005cf03567287ce3be9f51c
+
+    fs.writeFile('./backup/eth_data.txt', JSON.stringify(ETH.data), 'utf8', (err) => {
+        if (err) { logit(logger, `[writeBackup] ${err}`); }
+    });
+
+    fs.writeFile('./backup/eth_txn.txt', JSON.stringify(ETH.txn), 'utf8', (err) => {
+        if (err) { logit(logger, `[writeBackup] ${err}`); }
+    });
 }
 
 // Deal with storage of the block and catch empty/trouble blocks in case of connection loss
-function handleBlock (pBlock) {
-<<<<<<< HEAD
-    BLOCKID++;
-    const freshBlock = {
-        blockID: BLOCKID,
-        matches: 0,
-        volume: 0.0,
-        sumStrike: 0.0,
-        weightAvg: 0.0,
-        low: null,
-        high: null,
-    };
-    
-    // check for empty block
-    // don't need to check for half empty since actions are only taken on Matches and no 0's are written
-    if (pBlock.matches === 0) {
-        logit('[DEBUG] BLANK BLOCK DETECTED AND IGNORED');
-        return freshBlock;
-    } else {
-        // store the current state of the block into the historical array
-        // unshift to add at the start, pop to remove the end
-        archive.unshift(pBlock);
-        logit(`[DEBUG] ARCHIVE LENGTH: ${archive.length}`);
-
-        if (archive.length > 180) {
-            logit(`[DEBUG] archive.length > 180, popping the last stored object`);
-    
-            archive.pop();
-            logit(`[DEBUG] new archive length: ${archive.length}`);
-    
-        }
-        // run ticker since a new block was added and return a fresh block
-        runTicker();
-        return freshBlock;
-    }
-}
-
-// Compute and compare moving averages, report on current trend
-function runTicker () {
-    logit(`[DEBUG] running ticker calculations`);
-    // create the trailing arrays
-    const trail60 = archive.slice(0,60);
-    const trail180 = archive.slice(0,180);
-    let debugTally60 = 0;
-    let debugTally180 = 0;
-    
-    // reduce the trailing arrays to the total
-    const total60 = trail60.reduce((sum, cur) => {
-        debugTally60++;
-        return sum + cur.weightAvg;
-    }, 0);
-    const total180 = trail180.reduce((sum, cur) => {
-        debugTally180++;
-        return sum + cur.weightAvg;
-    }, 0);
-
-    const debugBlocks = archive.slice(0,6);
-    debugBlocks.forEach((each) => {
-        logStream.write(JSON.parse(each.blockID) + ' \n');
-    });
-
-    logit(`[DEBUG] debugTally60 = ${debugTally60}`);
-    logit(`[DEBUG] debugTally180 = ${debugTally180}`);
-    logit(`[DEBUG] total60 = ${total60}`);
-    logit(`[DEBUG] total180 = ${total180}`);
-
-    // average out the totals
-    const avg60 = total60 / 60.0;
-    const avg180 = total180 / 180.0;
-
-    const status = avg60 > avg180 ? "UP TREND - SHORT OVER LONG" : "DOWN TREND - LONG OVER SHORT";
-
-    logit(`       60 Period Average: ${avg60}`);
-    logit(`       180 Period Average: ${avg180}`);
-    logit(`       Market Status: ${status}`);
-    logit('* ------------------------------------------ *');
-=======
+// @TODO need to handle case of empty/failed fetch
+function pullData (pCurrency) {
     return new Promise((resolve, reject) => {
-        logit(logger, `[handleBlock] Entering handleBlock`);
-        BLOCKID++;
-        const freshBlock = {
-            blockID: BLOCKID,
-            startTime: moment().format('MM/DD/YYYY HH:mm:ss'),
-            matches: 0,
-            volume: 0.0,
-            sumStrike: 0.0,
-            weightAvg: 0.0,
-            low: null,
-            high: null,
-        };
+        logit(logger, `[pullData | ${pCurrency.ticker}] Entering pullData`);
+        authedClient.getProductOrderBook(pCurrency.ticker)
+            .then(data => {
+                const point = new Datum(data);
 
-        // check for empty block
-        // don't need to check for half empty since actions are only taken on Matches and no 0's are written
-        if (pBlock.matches === 0) {
-            logit(logger, '[handleBlock] BLANK BLOCK DETECTED AND IGNORED');
-            BLANKS++;
-            
-            if (BLANKS >= 8) {
-                BLANKS = 0;
-                logit(logger, `[CONNECTION] Restarting Websocket as a backup - 2 minutes of no matches have occured`);
-                startWebsocket();
-            }
-                
-            return freshBlock;
-        } else {
-            BLANKS = 0;
-            // store the current state of the block into the historical array
-            // unshift to add at the start, pop to remove the end
-            ARCHIVE.unshift(pBlock);
-            if (ARCHIVE.length > 1920) { ARCHIVE.pop(); }
+                pCurrency.addData(point);
+                if (pCurrency.data.length > 2900) { pCurrency.removeData(); }
 
-            // write data to Bob's CSV file
-            authedClient
-                .getProductOrderBook('ETH-USD')
-                .then(data => {
-                    const DataAsString = `${pBlock.blockID},${pBlock.startTime},${pBlock.matches},${pBlock.volume},${pBlock.sumStrike},${pBlock.weightAvg},${pBlock.low},${pBlock.high},${data.bids[0][0]},${data.asks[0][0]},\n`;
-                    fs.appendFile('./logs/bobData.csv', DataAsString, (err) => { if (err) throw err; });
-                })
-                .catch(err => {logit(logger, err)});
-
-            // reset the block
-            currentBlock = freshBlock;
-
-            resolve(true);
-        }
+                resolve(true);
+            })
+            .catch(err => {
+                logit(logger, `[${pCurrency.ticker} GET] ${err}`);
+                reject(err);
+            });
     });
 }
 
 // Compute and compare moving averages, report on current trend
-function calcAverages () {
+function calcAverages (pCurrency) {
     return new Promise((resolve, reject) => {
-        logit(logger, `[calcAverages] Entering calcAverages`);
+        const name = pCurrency.ticker;
+        logit(logger, `[calcAverages | ${name}] Entering calcAverages`);
+
         // create the trailing arrays
-        const short_trail = ARCHIVE.slice(0,SHORT_PERIODS);
-        const long_trail = ARCHIVE.slice(0,LONG_PERIODS);
+        const coin_short = pCurrency.data.slice(0,SHORT_PERIODS);
+        const coin_long = pCurrency.data.slice(0,LONG_PERIODS);
 
-        // reduce the trailing arrays to the total
-        const short_total = short_trail.reduce((sum, cur) => { return sum + cur.weightAvg; }, 0);
-        const long_total = long_trail.reduce((sum, cur) => { return sum + cur.weightAvg; }, 0);
+        let coin_short_total = null;
+        let coin_long_total = null;
+        let coin_short_avg = null;
+        let coin_long_avg = null;
 
-        // average out the totals
-        const short_average = short_total / SHORT_PERIODS;
-        const long_average = long_total / LONG_PERIODS;
+        // if we have a position look at the asks
+        if (pCurrency.status) {
+            logit(logger, `[calcAverages | ${name}] .status = true >> looking at ASKS`);
+            coin_short_total = coin_short.reduce((sum, cur) => { return sum + cur.ask; }, 0);
+            coin_long_total = coin_long.reduce((sum, cur) => { return sum + cur.ask; }, 0);
+            coin_short_avg = Math.round(coin_short_total / SHORT_PERIODS * 100) / 100;
+            coin_long_avg = Math.round(coin_long_total / LONG_PERIODS * 100) / 100;
+        }
+        // if we do not, look at the bids
+        else {
+            logit(logger, `[calcAverages | ${name}] .status = false >> looking at BIDS`);
+            coin_short_total = coin_short.reduce((sum, cur) => { return sum + cur.bid; }, 0);
+            coin_long_total = coin_long.reduce((sum, cur) => { return sum + cur.bid; }, 0);
+            coin_short_avg = Math.round(coin_short_total / SHORT_PERIODS * 100) / 100;
+            coin_long_avg = Math.round(coin_long_total / LONG_PERIODS * 100) / 100;
+        }
 
-        logit(logger, `[calcAverages] Short MA: ${short_average}`);
-        logit(logger, `[calcAverages] Long  MA: ${long_average}`);
-        logit(logger, '* ------------------------------------------ *');
+        logit(logger, `[calcAverages | ${name}] Short Total MA: ${coin_short_total}`);
+        logit(logger, `[calcAverages | ${name}] Long Total  MA: ${coin_long_total}`);
+        logit(logger, `[calcAverages | ${name}] Short Avg MA: ${coin_short_avg}`);
+        logit(logger, `[calcAverages | ${name}] Long Avg  MA: ${coin_long_avg}`);
 
-        if (ARCHIVE.length >= LONG_PERIODS) {
-            // makeTradeDecision(short_average, long_average);
-            resolve([short_average, long_average]);
+        if (pCurrency.data.length >= LONG_PERIODS) {
+            resolve([
+                coin_short_avg,
+                coin_long_avg
+            ]);
         } else {
-            reject('ARCHIVE not long enough');
+            logit(logger, `[calcAverages | ${name}] initial ${pCurrency.initial} | havePosition ${pCurrency.status}`);
+            reject('Data History not long enough');
         }
     });
 }
 
 // Take in the last minute MAs and decide what to do
 // avgArray format: [short, long]
-function makeTradeDecision(avgArray) {
+/*
+    Short > Long = Market is going UP (want to have ETH), should have bought already
+        --> properMove = True
+            --> if properMove True, we should buy ETH (havePosition False -> make it True)
+                >> check for InitialRound -> pass if it is
+                >> should look at USD and send BUY order to convert to ETH
+            --> if properMove True, we should hold ETH (havePosition True)
+                >> do nothing
+
+    Short < Long = Market is going DOWN (want to have USD), should have sold already
+        --> properMove = False
+            --> if properMove False, we should sell ETH (havePosition True -> make it False)
+                >> should look at ETH and send SELL order to convert to USD
+            --> if properMove False, we should hold USD (havePosition False)
+                >> do nothing
+
+    Scenario Summary:
+        True | True -> nothing
+        True | False -> buy
+        False | True -> sell
+        False | False -> nothing
+*/
+function decideAction(pCurrency, avgArray) {
     return new Promise((resolve, reject) => {
-        logit(logger, `[makeTradeDecision] Entering makeTradeDecision`);
+        const name = pCurrency.ticker;
+        logit(logger, `[decideAction | ${name}] Entering decideAction}`);
 
-        const pShort = avgArray[0];
-        const pLong = avgArray[1];
+        // create move set
+        const proper_move = avgArray[0] > avgArray[1];
 
-        /*
-            Short > Long = Market is going UP (want to have ETH), should have bought already
-                --> properMove = True
-                    --> if properMove True, we should buy ETH (havePosition False -> make it True)
-                        >> check for InitialRound -> pass if it is
-                        >> should look at USD and send BUY order to convert to ETH
-                    --> if properMove True, we should hold ETH (havePosition True)
-                        >> do nothing
+        // Log the current status before the switch cases
+        logit(logger, `[decideAction | ${name}] initial ${pCurrency.initial} | properMove ${proper_move} | havePosition ${pCurrency.status}`);
 
-            Short < Long = Market is going DOWN (want to have USD), should have sold already
-                --> properMove = False
-                    --> if properMove False, we should sell ETH (havePosition True -> make it False)
-                        >> should look at ETH and send SELL order to convert to USD
-                    --> if properMove False, we should hold USD (havePosition False)
-                        >> do nothing
-
-            Scenario Summary:
-                True | True -> nothing
-                True | False -> buy ETH
-                False | True -> sell ETH
-                False | False -> nothing
-         */
-        const properMove = pShort > pLong;
-
-        switch (properMove) {
-
+        switch (proper_move) {
             case true:
-                // >> check for InitialRound -> pass if it is
-                if (STATUS.initialRound) {
-                    logit(logger, `[makeTradeDecision] Ignored uptick since it's the initial round`);
-
-                    reject({
-                        action: 'none',
-                        message: 'Initial Round',
-                    });
-                    return;
+                if (pCurrency.initial === true) {
+                    logit(logger, `[decideAction | ${name}] Ignored uptick since it's the initial round`);
+                    reject({ action: 'none', message: 'Initial Round'});
+                    break;
                 }
 
-                // True | True
-                // --> if properMove True, we should hold ETH (havePosition True)
-                    // >> do nothing
-                if (STATUS.havePosition) {
-                    logit(logger, `[makeTradeDecision] properMove ${properMove} | havePosition ${STATUS.havePosition}`);
-                    logit(logger, `[makeTradeDecision] Price is going UP and we HAVE a position -> do nothing`);
-
-                    reject({
-                        action: 'none',
-                        message: 'Price UP + Have Position -> Do Nothing',
-                    });
+                if (pCurrency.status) {
+                    logit(logger, `[decideAction | ${name}] Price is going UP and we HAVE a position -> do nothing`);
+                    reject({ action: 'none', message: 'Price UP + Have Position -> Do Nothing'});
                 }
-                // True | False
-                // --> if properMove True, we should buy ETH (havePosition False -> make it True)
-                    // >> should look at USD and send BUY order to convert to ETH
-                    // >> set havePosition to True
                 else {
-                    logit(logger, `[makeTradeDecision] properMove ${properMove} | havePosition ${STATUS.havePosition}`);
-                    logit(logger, `[makeTradeDecision] Price is going UP and we DO NOT HAVE a position -> buy ETH`);
-
-                    resolve({
-                        action: 'buy',
-                        message: 'Price UP + No Position -> BUY ETH',
-                    });
-
+                    logit(logger, `[decideAction | ${name}] Price is going UP and we DO NOT HAVE a position -> BUY`);
+                    resolve({ action: 'buy', message: `Price UP + No Position -> BUY ${name}`});
                 }
                 break;
 
             case false:
-                // >> check for InitialRound -> set to False since price is going down
-                if (STATUS.initialRound) {
-                    logit(logger, `[makeTradeDecision] Flipped Initial Round to false so next uptick is a clean buy`);
-                    STATUS.initialRound = false;
+                if (pCurrency.initial === true) {
+                    logit(logger, `[decideAction | ${name}] Flipped Initial Round to false so next uptick is a clean buy`);
+                    pCurrency.initial = false;
                 }
 
-                // False | True
-                // --> if properMove False, we should sell ETH (havePosition True -> make it False)
-                    // >> should look at ETH and send SELL order to convert to USD
-                    // >> set havePosition to False
-                if (STATUS.havePosition) {
-                    logit(logger, `[makeTradeDecision] properMove ${properMove} | havePosition ${STATUS.havePosition}`);
-
-                    resolve({
-                        action: 'sell',
-                        message: 'Price DOWN + Have Position -> SELL ETH',
-                    });
+                if (pCurrency.status) {
+                    logit(logger, `[decideAction | ${name}] Price is going DOWN and we HAVE a position -> SELL`);
+                    resolve({ action: 'sell', message: `Price DOWN + Have Position -> SELL ${name}`});
                 }
-                // False | False
-                // --> if properMove False, we should hold USD (havePosition False)
-                    // >> do nothing
                 else {
-                    logit(logger, `[makeTradeDecision] properMove ${properMove} | havePosition ${STATUS.havePosition}`);
-
-                    reject({
-                        action: 'none',
-                        message: 'Price DOWN + No Position -> Do Nothing',
-                    });
+                    logit(logger, `[decideAction | ${name}] Price is going DOWN and we DO NOT HAVE a position -> do nothing`);
+                    reject({ action: 'none', message: 'Price DOWN + No Position -> Do Nothing'});
                 }
                 break;
 
             default:
-                logit(logger, `[makeTradeDecision] properMove ${properMove} | havePosition ${STATUS.havePosition}`);
-                logit(logger, `[makeTradeDecision] makeTradeDecision was called but situation could not be handled`);
-
-                reject({
-                    action: 'error',
-                    message: 'No trade decision could be made, check logs',
-                });
+                logit(logger, `[decideAction | ${name}] decideAction was called but situation could not be handled`);
+                reject({ action: 'error', message: 'No trade decision could be made, check logs'});
+                break;
         }
     });
 }
 
 // check action decision and follow through on it
-function handleTradeDecision (pDecisionObj) {
+function handleAction (pCurrency, pDecision) {
     return new Promise((resolve, reject) => {
-        logit(logger, `[handleTradeDecision] Entering handleTradeDecision`);
-        logit(logger, `[handleTradeDecision] Action is ${pDecisionObj.action}`);
+        const name = pCurrency.ticker;
+        logit(logger, `[handleAction | ${name}] Entering handleAction`);
+        logit(logger, `[handleAction | ${name}] Action: ${pDecision.action}`);
+        logit(logger, `[handleAction | ${name}] Message: ${pDecision.message}`);
 
-        // if there is nothing for us to do, end processing to not waste time / resources
-        if (pDecisionObj.action === 'none' || pDecisionObj === 'error') {
-            reject(pDecisionObj.message);
-            logit(logger, `[handleTradeDecision] Breaking out of handleTradeDecision since nothing to do`);
-            return;
+        if (pDecision.action === 'none' || pDecision === 'error') {
+            reject(pDecision.message);
+            logit(logger, `[handleAction | ${name}] Breaking out of handleAction - nothing to do`);
         }
+        else {
+            // grab all relevant data, DRYs the code but is technically a little inefficient
+            logit(logger, `[handleAction | ${name}] Gathering data from Authed Client`);
+            Promise.all([
+                authedClient.getProductOrderBook(pCurrency.ticker),
+                authedClient.getAccount(keychain.usdAccount),
+                authedClient.getAccount(pCurrency.account),
+            ])
+                .then(results => {
+                    const orderBook = results[0];
+                    const usdAccount = results[1];
+                    const coinAccount = results[2];
 
-        // grab all relevant data, DRYs the code but is technically a little inefficient
-        logit(logger, `[handleTradeDecision] Gathering data from Authed Client`);
-        Promise.all([
-            authedClient.getProductOrderBook('ETH-USD'),
-            authedClient.getAccount(keychain.usdAccount),
-            authedClient.getAccount(keychain.ethAccount),
-        ])
-            .then(results => {
-                const orderBook = results[0];
-                const usdAccount = results[1];
-                const ethAccount = results[2];
+                    switch (pDecision.action) {
+                        // Enter into Buy Logic
+                        // @TODO - using 49% of available funds so both currencies are fundable
+                        case 'buy':
+                            logit(logger, `[handleAction | ${name}] Selected Buy case, creating buy order`);
+                            const buyParams = {
+                                type: 'market',
+                                side: 'buy',
+                                product_id: pCurrency.ticker,
+                                funds: Math.round((usdAccount.available * 0.49) * 100) / 100,
+                            };
+                            logit(logger, JSON.stringify(buyParams));
 
-                logit(logger, JSON.stringify(orderBook));
-                logit(logger, JSON.stringify(usdAccount));
-                logit(logger, JSON.stringify(ethAccount));
+                            // @TODO THESE NUMBERS ARE FOR 1 COIN BASICALLY, NOT USING USD ACCOUNT BALANCE
+                            const buyPrice = Math.round(orderBook.asks[0][0] * 100) / 100;
+                            const buyFee = Math.round((buyPrice * 0.003) * 100) / 100;
+                            const buyTxn = new Transaction('buy', buyPrice, buyFee);
+                            pCurrency.addTxn(buyTxn);
 
-                switch (pDecisionObj.action) {
+                            logit(logger, `[handleAction | ${name}] Paid USD @ ${buyTxn.price}/coin and ${buyTxn.fee} fee`);
+                            logit(logger, `[handleAction | ${name}] Total Transactions: ${pCurrency.txn.length}`);
+                            totalFees += buyFee;
 
-                    // Enter into Buy Logic
-                    case 'buy':
-                        logit(logger, `[handleTradeDecision] Selected Buy case, creating buy order`);
-                        const buyParams = {
-                            type: 'market',
-                            side: 'buy',
-                            product_id: 'ETH-USD',
-                            funds: (usdAccount.available * 0.98).toFixed(2),
-                        };
-                        logit(logger, JSON.stringify(buyParams));
+                            // swap status to true since we bought
+                            pCurrency.status = true;
+                            logit(logger, `[handleAction | ${name}] havePosition is now ${pCurrency.status}`);
+                            resolve(`[handleAction | ${name}] Purchase completely processed`);
+                            break;
 
+                        // Enter into Sell Logic
+                        case 'sell':
+                            logit(logger, `[handleAction | ${name}] Selected Sell case, creating sell order`);
+                            const sellParams = {
+                                type: 'market',
+                                side: 'sell',
+                                product_id: pCurrency.ticker,
+                                size: coinAccount.available,
+                            };
+                            logit(logger, JSON.stringify(sellParams));
 
-                        // @TODO THESE NUMBERS ARE FOR 1 ETH BASICALLY, NOT USING USD ACCOUNT BALANCE
-                        logit(logger, `[handleTradeDecision] Ask (Theoretical Buy Price): ${orderBook.asks[0][0]}`);
-                        STATUS.lastBuyPrice = orderBook.asks[0][0];
-                        STATUS.lastBuyCost = (STATUS.lastBuyPrice * 0.0025).toFixed(2);
-                        STATUS.totalFees += Number(STATUS.lastBuyCost);
-                        logit(logger, `[handleTradeDecision] Paid USD @ ${STATUS.lastBuyPrice}/ETH and ${STATUS.lastBuyCost} fee`);
+                            // @TODO THESE NUMBERS ARE FOR 1 COIN BASICALLY, NOT USING USD ACCOUNT BALANCE
+                            const sellPrice = Math.round(orderBook.bids[0][0] * 100) / 100;
+                            const sellFee = Math.round((sellPrice * 0.003) * 100) / 100;
+                            const sellTxn = new Transaction('sell', sellPrice, sellFee);
+                            pCurrency.addTxn(sellTxn);
 
-                        STATUS.havePosition = true;
-                        logit(logger, `[handleTradeDecision] havePosition is now ${STATUS.havePosition}`);
-                        break;
+                            logit(logger, `[handleAction | ${name}] Sold for USD @ ${sellTxn.price}/coin and ${sellTxn.fee} fee`);
+                            logit(logger, `[handleAction | ${name}] Total Transactions: ${pCurrency.txn.length}`);
+                            totalFees += sellFee;
 
-                    // Enter into Sell Logic
-                    case 'sell':
-                        logit(logger, `[handleTradeDecision] Selected Sell case, creating sell order`);
-                        const sellParams = {
-                            type: 'market',
-                            side: 'sell',
-                            product_id: 'ETH-USD',
-                            size: ethAccount.available,
-                        };
-                        logit(logger, JSON.stringify(sellParams));
+                            // swap status to true since we sold
+                            pCurrency.status = false;
+                            logit(logger, `[handleAction | ${name}] havePosition is now ${pCurrency.status}`);
 
+                            // Calculate the profit since we sold stuff
+                            // use the transactions just to test each out
+                            // @TODO this could be cleaner obviously
+                            const boughtTxn = pCurrency.txn.slice(-2)[0];
+                            const soldTxn = pCurrency.txn.slice(-1)[0];
+                            const profit = soldTxn.price - soldTxn.fee - boughtTxn.price - boughtTxn.fee;
+                            totalProfit += profit;
 
-                        // @TODO THESE NUMBERS ARE FOR 1 ETH BASICALLY, NOT USING USD ACCOUNT BALANCE
-                        logit(logger, `[handleTradeDecision] Bid (Theoretical Sell Price): ${orderBook.bids[0][0]}`);
-                        STATUS.lastSellPrice = orderBook.bids[0][0];
-                        STATUS.lastSellCost = (STATUS.lastSellPrice * 0.0025).toFixed(2);
-                        STATUS.totalFees += Number(STATUS.lastSellCost);
-                        logit(logger, `[handleTradeDecision] Sold for USD @ ${STATUS.lastSellPrice}/ETH and ${STATUS.lastSellCost} fee`);
+                            logit(logger, `[handleAction | ${name}] TX Profit: ${profit}`);
+                            logit(logger, `[handleAction | ${name}] Total Profit: ${totalProfit}`);
+                            logit(logger, `[handleAction | ${name}] Total Fees: ${totalFees}`);
+                            resolve(`[handleAction | ${name}] Sale completely processed`);
+                            break;
 
-                        STATUS.havePosition = false;
-                        logit(logger, `[handleTradeDecision] havePosition is now ${STATUS.havePosition}`);
-
-                        const profit = STATUS.lastSellPrice - STATUS.lastSellCost - STATUS.lastBuyPrice - STATUS.lastBuyCost;
-                        STATUS.totalProfit += profit;
-
-                        logit(logger, `[handleTradeDecision] TX Profit: ${profit} | Total Profit: ${STATUS.totalProfit}`);
-
-                        // Add the full cycle data to the History
-                        const fees = STATUS.lastSellCost + STATUS.lastBuyCost;
-                        const cycle = {
-                            time: moment().format('MM/DD/YYYY HH:mm:ss'),
-                            purchase: STATUS.lastBuyPrice,
-                            sale: STATUS.lastSellPrice,
-                            fees: fees,
-                            profit: profit,
-                            totalProfit: STATUS.totalProfit,
-                        };
-
-                        HISTORY.push(cycle);
-                        fs.appendFile('./logs/history.txt', JSON.stringify(cycle) + ',', (err) => { if (err) throw err; });
-                        break;
-
-                    default:
-                        logit(logger, `[handleTradeDecision] No action could be read from DecisionObject`);
-                        return;
-                }
-            })
-            .catch(err => {logit(logger, err)});
-
-
+                        default:
+                            reject(`[handleAction | ${name}] No action could be read from DecisionObject`);
+                            break;
+                    }
+                })
+                .catch(err => {
+                    logit(logger, err)
+                });
+        }
     });
 }
 
 function generatePage() {
     logit(logger, `[generatePage] Entering generatePage`);
-    const snapshot = ARCHIVE.slice(0,5);
+    const btc_snapshot = BTC.data.slice(0,10);
+    const btc_transacts = BTC.txn.slice(0,10);
+    const eth_snapshot = ETH.data.slice(0,10);
+    const eth_transacts = ETH.txn.slice(0,10);
+
+    // consolidate profit for individual coin
+    // if its a buy you (-) if its a sell you (+)
+    let btc_profit = BTC.txn.reduce((sum, each) => {
+        if (each.type === "buy") { return sum - each.price - each.fee; }
+        else { return sum + each.price - each.fee; }
+        }, 0);
+
+    let eth_profit = ETH.txn.reduce((sum, each) => {
+        if (each.type === "buy") { return sum - each.price - each.fee; }
+        else { return sum + each.price - each.fee; }
+    }, 0);
 
     let page = `<h1>CRYPTO BOT</h1>`;
     page += `<p>SHORT_PERIODS = ${SHORT_PERIODS}</p>`;
     page += `<p>LONG_PERIODS = ${LONG_PERIODS}</p>`;
     page += '<br>';
-
-    page += `<p>Profit (total): ${STATUS.totalProfit}</p>`;
-    page += `<p>Fees (total): ${STATUS.totalFees}</p>`;
-    page += `<p>Last Buy: ${STATUS.lastBuyPrice}</p>`;
-    page += `<p>Last Buy Fee: ${STATUS.lastBuyCost}</p>`;
-    page += `<p>Last Sell: ${STATUS.lastSellPrice}</p>`;
-    page += `<p>Last Sell Fee: ${STATUS.lastSellCost}</p>`;
-    page += `<p>Have position? ${STATUS.havePosition}</p>`;
-    page += `<p>Initial round? ${STATUS.initialRound}</p>`;
+    page += `<p>Profit (total): ${totalProfit}</p>`;
+    page += `<p>Fees (total): ${totalFees}</p>`;
     page += '<br>';
 
-    snapshot.forEach((each) => {
-        page += `<p>${JSON.stringify(each)}</p>`;
+    page += '<h1>BTC Performance</h1>';
+    page += `<p>Have position? ${BTC.status}</p>`;
+    page += `<p>Initial round? ${BTC.initial}</p>`;
+    page += `<p>Data Length: ${BTC.data.length}</p>`;
+    page += `<p>Transactions: ${BTC.txn.length}</p>`;
+    page += `<p>BTC Profit: ${btc_profit}</p>`;
+    page += '<br>';
+
+    btc_snapshot.forEach((each) => {
+        page += `<p>Time: ${each.timestamp} | Sequence: ${each.sequence} | Bid: ${each.bid}  | Ask: ${each.ask}</p>`;
     });
     page += '<br>';
 
-    HISTORY.forEach((each) => {
-        page += `<p>Time: ${each.time} | Bought: ${each.purchase} | Sold: ${each.sale}  | Fees: ${each.fees} | Profit: ${each.profit} | Total: ${each.totalProfit} </p>`;
+    btc_transacts.forEach((each) => {
+        page += `<p>Time: ${each.timestamp} | Type: ${each.type} | Price: ${each.price}  | Fees: ${each.fee}</p>`;
+    });
+    page += '<br>';
+
+    page += '<h1>ETH Performance</h1>';
+    page += `<p>Have position? ${ETH.status}</p>`;
+    page += `<p>Initial round? ${ETH.initial}</p>`;
+    page += `<p>Data Length: ${ETH.data.length}</p>`;
+    page += `<p>Transactions: ${ETH.txn.length}</p>`;
+    page += `<p>ETH Profit: ${eth_profit}</p>`;
+    page += '<br>';
+
+    eth_snapshot.forEach((each) => {
+        page += `<p>Time: ${each.timestamp} | Sequence: ${each.sequence} | Bid: ${each.bid}  | Ask: ${each.ask}</p>`;
+    });
+    page += '<br>';
+
+    eth_transacts.forEach((each) => {
+        page += `<p>Time: ${each.timestamp} | Type: ${each.type} | Price: ${each.price}  | Fees: ${each.fee}</p>`;
     });
 
     return page;
->>>>>>> b1deef727b7449ec7005cf03567287ce3be9f51c
 }

@@ -4,7 +4,11 @@
     "gdax": "^0.5.1",
     "moment": "^2.21.0"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "eslint": "^5.1.0",
+    "eslint-config-airbnb-base": "^13.0.0",
+    "eslint-plugin-import": "^2.13.0"
+  },
   "name": "gdax-node-poc",
   "version": "1.0.0",
   "description": "proof of concept for simple trading bot",

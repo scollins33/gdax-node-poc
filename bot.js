@@ -23,10 +23,11 @@ if (process.argv.length !== 6) {
   process.exit(1);
 }
 
-const MODE = process.argv[2];
-const POLLING = parseInt(process.argv[3], 10);
-const SHORT_PERIODS = parseInt(process.argv[4], 10);
-const LONG_PERIODS = parseInt(process.argv[5], 10);
+const MODE = process.argv[1];
+const POLLING = parseInt(process.argv[2], 10);
+const SHORT_PERIODS = parseInt(process.argv[3], 10);
+const LONG_PERIODS = parseInt(process.argv[4], 10);
+console.log(process.argv);
 
 if (Number.isNaN(POLLING) || Number.isNaN(SHORT_PERIODS) || Number.isNaN(LONG_PERIODS)) {
   console.log('[HELP] Proper usage:  node bot.js [mode] [polling_rate] [short_period] [long_period]');

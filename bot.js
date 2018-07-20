@@ -40,8 +40,8 @@ if (Number.isNaN(POLLING) || Number.isNaN(SHORT_PERIODS) || Number.isNaN(LONG_PE
 } else if (LONG_PERIODS > 4320) {
   console.log('[HELP] Backup is hard-coded for 4320 points, Long Periods cannot exceed it');
   process.exit(1);
-} else if (MODE !== 'bob' || MODE !== 'moving') {
-  console.log('[HELP] mode needs to be [ bob ] or [ moving ]');
+} else if (MODE !== 'percent' || MODE !== 'moving') {
+  console.log('[HELP] mode needs to be [ percent ] or [ moving ]');
   process.exit(1);
 }
 
@@ -531,7 +531,7 @@ function startMovingETH() {
   }, POLLING);
 }
 
-function startBobBTC() {
+function startPercentBTC() {
   return setInterval(() => {
     // Promise chain to handle logic
     pullData(BTC)
@@ -554,7 +554,7 @@ function startBobBTC() {
   }, POLLING);
 }
 
-function startBobETH() {
+function startPercentETH() {
   return setInterval(() => {
     // Promise chain to handle logic
     pullData(ETH)
@@ -580,9 +580,9 @@ function startBobETH() {
 if (MODE === 'moving') {
   startMovingBTC();
   startMovingETH();
-} else if (MODE === 'bob') {
-  startBobBTC();
-  startBobETH();
+} else if (MODE === 'percent') {
+  startPercentBTC();
+  startPercentETH();
 } else {
   console.log('[ERROR] NO VIABLE MODE SELECTED, CLOSING THE BOT');
   process.exit(1);

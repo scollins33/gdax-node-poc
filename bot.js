@@ -18,7 +18,7 @@ const Datum = require('./classes/datum');
 /* ------------------------------------------
     SCRIPT STARTUP CHECKS
   ------------------------------------------ */
-if (process.argv.length !== 5) {
+if (process.argv.length !== 6) {
   console.log('[HELP] Proper usage:  node bot.js [mode] [polling_rate] [short_period] [long_period]');
   process.exit(1);
 }
@@ -29,7 +29,7 @@ const SHORT_PERIODS = parseInt(process.argv[4], 10);
 const LONG_PERIODS = parseInt(process.argv[5], 10);
 
 if (Number.isNaN(POLLING) || Number.isNaN(SHORT_PERIODS) || Number.isNaN(LONG_PERIODS)) {
-  console.log('[HELP] Proper usage:  node bot.js [polling_rate] [short_period] [long_period]');
+  console.log('[HELP] Proper usage:  node bot.js [mode] [polling_rate] [short_period] [long_period]');
   process.exit(1);
 } else if (POLLING < 5000) {
   console.log('[HELP] Polling Rate cannot be les than 5000 milliseconds');

@@ -18,9 +18,15 @@ const Datum = require('./classes/datum');
 /* ------------------------------------------
     SCRIPT STARTUP CHECKS
   ------------------------------------------ */
-const POLLING = parseInt(process.argv[2], 10);
-const SHORT_PERIODS = parseInt(process.argv[3], 10);
-const LONG_PERIODS = parseInt(process.argv[4], 10);
+if (process.argv.length !== 5) {
+  console.log('[HELP] Proper usage:  node bot.js [mode] [polling_rate] [short_period] [long_period]');
+  process.exit(1);
+}
+
+const MODE = process.argv[2];
+const POLLING = parseInt(process.argv[3], 10);
+const SHORT_PERIODS = parseInt(process.argv[4], 10);
+const LONG_PERIODS = parseInt(process.argv[5], 10);
 
 if (Number.isNaN(POLLING) || Number.isNaN(SHORT_PERIODS) || Number.isNaN(LONG_PERIODS)) {
   console.log('[HELP] Proper usage:  node bot.js [polling_rate] [short_period] [long_period]');
@@ -33,6 +39,9 @@ if (Number.isNaN(POLLING) || Number.isNaN(SHORT_PERIODS) || Number.isNaN(LONG_PE
   process.exit(1);
 } else if (LONG_PERIODS > 4320) {
   console.log('[HELP] Backup is hard-coded for 4320 points, Long Periods cannot exceed it');
+  process.exit(1);
+} else if (MODE !== 'bob' || MODE !== 'moving') {
+  console.log('[HELP] mode needs to be [ bob ] or [ moving ]');
   process.exit(1);
 }
 
@@ -88,6 +97,29 @@ function logit(pStream, pMessage) {
   pStream.write(`${moment().format('MM/DD/YYYY HH:mm:ss SSS')} | ${pMessage} \n`);
 }
 
+// Deal with storage of the block and catch empty/trouble blocks in case of connection loss
+// @TODO need to handle case of empty/failed fetch
+function pullData(pCurrency) {
+  return new Promise((resolve, reject) => {
+    logit(logger, `[pullData | ${pCurrency.ticker}] Entering pullData`);
+    authedClient.getProductOrderBook(pCurrency.ticker)
+      .then((data) => {
+        const point = new Datum(data);
+
+        // add the point to the currency array
+        pCurrency.addData(point);
+        // remove the oldest point since we don't need to be longer than desired
+        if (pCurrency.data.length >= LONG_PERIODS) { pCurrency.removeData(); }
+
+        resolve(point);
+      })
+      .catch((err) => {
+        logit(logger, `[${pCurrency.ticker} GET] ${err}`);
+        reject(err);
+      });
+  });
+}
+
 // Helper to write backup of archive
 function writeBackup(pCurrency, pData) {
   return new Promise((resolve, reject) => {
@@ -113,29 +145,6 @@ function writeBackup(pCurrency, pData) {
     });
 
     resolve(true);
-  });
-}
-
-// Deal with storage of the block and catch empty/trouble blocks in case of connection loss
-// @TODO need to handle case of empty/failed fetch
-function pullData(pCurrency) {
-  return new Promise((resolve, reject) => {
-    logit(logger, `[pullData | ${pCurrency.ticker}] Entering pullData`);
-    authedClient.getProductOrderBook(pCurrency.ticker)
-      .then((data) => {
-        const point = new Datum(data);
-
-        // add the point to the currency array
-        pCurrency.addData(point);
-        // remove the oldest point since we don't need to be longer than desired
-        if (pCurrency.data.length >= LONG_PERIODS) { pCurrency.removeData(); }
-
-        resolve(point);
-      })
-      .catch((err) => {
-        logit(logger, `[${pCurrency.ticker} GET] ${err}`);
-        reject(err);
-      });
   });
 }
 
@@ -438,6 +447,11 @@ function generatePage() {
   return page;
 }
 
+function choosePath(pCurrency) {
+  if (pCurrency.status) {
+    // we should check if we need to sell
+  }
+}
 
 /* ------------------------------------------
     START EXPRESS SERVER
@@ -467,49 +481,109 @@ logit(logger, `[STARTUP] Running bot using ${SHORT_PERIODS} and ${LONG_PERIODS}`
 // run once for each currency we want to trade
 // Interval is set to the global POLLING
 
-const BtcInterval = setInterval(() => {
-  // Promise chain to handle logic
-  pullData(BTC)
-    .then(data => writeBackup(BTC, data))
-    .then(() => calcAverages(BTC))
-    .then(averages => decideAction(BTC, averages))
-    .then(decision => handleAction(BTC, decision))
-    .then((result) => {
-      logit(logger, result);
-      logit(logger, '* ------------------------------------------ *');
-    })
-    .catch((err) => {
-      if (err.action) {
-        logit(logger, `[Promise Chain | ${BTC.ticker}] Error.action: ${err.action}`);
-        logit(logger, `[Promise Chain | ${BTC.ticker}] Error.message: ${err.message}`);
+function startMovingBTC() {
+  return setInterval(() => {
+    // Promise chain to handle logic
+    pullData(BTC)
+      .then(data => writeBackup(BTC, data))
+      .then(() => calcAverages(BTC))
+      .then(averages => decideAction(BTC, averages))
+      .then(decision => handleAction(BTC, decision))
+      .then((result) => {
+        logit(logger, result);
         logit(logger, '* ------------------------------------------ *');
-      } else {
-        logit(logger, `[Promise Chain | ${BTC.ticker}] Error: ${err}`);
-        logit(logger, '* ------------------------------------------ *');
-      }
-    });
-}, POLLING);
+      })
+      .catch((err) => {
+        if (err.action) {
+          logit(logger, `[Promise Chain | ${BTC.ticker}] Error.action: ${err.action}`);
+          logit(logger, `[Promise Chain | ${BTC.ticker}] Error.message: ${err.message}`);
+          logit(logger, '* ------------------------------------------ *');
+        } else {
+          logit(logger, `[Promise Chain | ${BTC.ticker}] Error: ${err}`);
+          logit(logger, '* ------------------------------------------ *');
+        }
+      });
+  }, POLLING);
+}
 
+function startMovingETH() {
+  return setInterval(() => {
+    // Promise chain to handle logic
+    pullData(ETH)
+      .then(data => writeBackup(ETH, data))
+      .then(() => calcAverages(ETH))
+      .then(averages => decideAction(ETH, averages))
+      .then(decision => handleAction(ETH, decision))
+      .then((result) => {
+        logit(logger, result);
+        logit(logger, '* ------------------------------------------ *');
+      })
+      .catch((err) => {
+        if (err.action) {
+          logit(logger, `[Promise Chain | ${ETH.ticker}] Error.action: ${err.action}`);
+          logit(logger, `[Promise Chain | ${ETH.ticker}] Error.message: ${err.message}`);
+          logit(logger, '* ------------------------------------------ *');
+        } else {
+          logit(logger, `[Promise Chain | ${ETH.ticker}] Error: ${err}`);
+          logit(logger, '* ------------------------------------------ *');
+        }
+      });
+  }, POLLING);
+}
 
-const EthInterval = setInterval(() => {
-  // Promise chain to handle logic
-  pullData(ETH)
-    .then(data => writeBackup(ETH, data))
-    .then(() => calcAverages(ETH))
-    .then(averages => decideAction(ETH, averages))
-    .then(decision => handleAction(ETH, decision))
-    .then((result) => {
-      logit(logger, result);
-      logit(logger, '* ------------------------------------------ *');
-    })
-    .catch((err) => {
-      if (err.action) {
-        logit(logger, `[Promise Chain | ${ETH.ticker}] Error.action: ${err.action}`);
-        logit(logger, `[Promise Chain | ${ETH.ticker}] Error.message: ${err.message}`);
-        logit(logger, '* ------------------------------------------ *');
-      } else {
-        logit(logger, `[Promise Chain | ${ETH.ticker}] Error: ${err}`);
-        logit(logger, '* ------------------------------------------ *');
-      }
-    });
-}, POLLING);
+function startBobBTC() {
+  return setInterval(() => {
+    // Promise chain to handle logic
+    pullData(BTC)
+      .then(data => writeBackup(BTC, data))
+      .then(() => choosePath(BTC))
+      // .then((result) => {
+      //   logit(logger, result);
+      //   logit(logger, '* ------------------------------------------ *');
+      // })
+      .catch((err) => {
+        if (err.action) {
+          logit(logger, `[Promise Chain | ${BTC.ticker}] Error.action: ${err.action}`);
+          logit(logger, `[Promise Chain | ${BTC.ticker}] Error.message: ${err.message}`);
+          logit(logger, '* ------------------------------------------ *');
+        } else {
+          logit(logger, `[Promise Chain | ${BTC.ticker}] Error: ${err}`);
+          logit(logger, '* ------------------------------------------ *');
+        }
+      });
+  }, POLLING);
+}
+
+function startBobETH() {
+  return setInterval(() => {
+    // Promise chain to handle logic
+    pullData(ETH)
+      .then(data => writeBackup(ETH, data))
+      .then(() => choosePath(ETH))
+      // .then((result) => {
+      //   logit(logger, result);
+      //   logit(logger, '* ------------------------------------------ *');
+      // })
+      .catch((err) => {
+        if (err.action) {
+          logit(logger, `[Promise Chain | ${ETH.ticker}] Error.action: ${err.action}`);
+          logit(logger, `[Promise Chain | ${ETH.ticker}] Error.message: ${err.message}`);
+          logit(logger, '* ------------------------------------------ *');
+        } else {
+          logit(logger, `[Promise Chain | ${ETH.ticker}] Error: ${err}`);
+          logit(logger, '* ------------------------------------------ *');
+        }
+      });
+  }, POLLING);
+}
+
+if (MODE === 'moving') {
+  startMovingBTC();
+  startMovingETH();
+} else if (MODE === 'bob') {
+  startBobBTC();
+  startBobETH();
+} else {
+  console.log('[ERROR] NO VIABLE MODE SELECTED, CLOSING THE BOT');
+  process.exit(1);
+}

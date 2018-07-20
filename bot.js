@@ -27,8 +27,6 @@ const MODE = process.argv[2];
 const POLLING = parseInt(process.argv[3], 10);
 const SHORT_PERIODS = parseInt(process.argv[4], 10);
 const LONG_PERIODS = parseInt(process.argv[5], 10);
-console.log(process.argv);
-console.log(`${MODE} ${POLLING} ${SHORT_PERIODS} ${LONG_PERIODS}`);
 
 if (Number.isNaN(POLLING) || Number.isNaN(SHORT_PERIODS) || Number.isNaN(LONG_PERIODS)) {
   console.log('[HELP] Proper usage:  node bot.js [mode] [polling_rate] [short_period] [long_period]');
@@ -42,7 +40,7 @@ if (Number.isNaN(POLLING) || Number.isNaN(SHORT_PERIODS) || Number.isNaN(LONG_PE
 } else if (LONG_PERIODS > 4320) {
   console.log('[HELP] Backup is hard-coded for 4320 points, Long Periods cannot exceed it');
   process.exit(1);
-} else if (MODE !== 'percent' || MODE !== 'moving') {
+} else if (MODE !== 'percent' && MODE !== 'moving') {
   console.log('[HELP] mode needs to be [ percent ] or [ moving ]');
   process.exit(1);
 }

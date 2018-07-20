@@ -109,7 +109,7 @@ function pullData(pCurrency) {
         // add the point to the currency array
         pCurrency.addData(point);
         // remove the oldest point since we don't need to be longer than desired
-        if (pCurrency.data.length >= LONG_PERIODS) { pCurrency.removeData(); }
+        if (pCurrency.data.length > LONG_PERIODS) { pCurrency.removeData(); }
 
         resolve(point);
       })

@@ -447,10 +447,48 @@ function generatePage() {
   return page;
 }
 
+
 function choosePath(pCurrency) {
-  if (pCurrency.status) {
-    // we should check if we need to sell
-  }
+  return new Promise((resolve, reject) => {
+    /*
+    If we are holding, see if we've made 3%
+      sell if we have
+      otherwise pass
+    */
+    if (pCurrency.status) {
+      const lastTxn = pCurrency.txn[-1];
+
+      // sanity check that we bought on our last transaction
+      if (lastTxn.type === 'buy') {
+        const latestBid = pCurrency.data[0].bid;
+        const targetPrice = lastTxn.price * 1.033;
+
+        if (latestBid >= targetPrice) {
+          resolve({ action: 'sell', message: 'Weve hit 3% gain and fee coverage (0.3%), sell it' });
+        }
+      } else {
+        reject(new Error(`[choosePath] Last Transaction was NOT a buy but ${pCurrency.ticker} status is true (obj: ${pCurrency.status})`));
+      }
+    /*
+    Otherwise see if we should buy
+    24hr constant up -> pass
+    24hr constant down -> pass
+    Variance
+      -> is it 24hr low?
+        yes -> pass
+        no -> low+X%?
+          no -> pass
+          yes -> check weekly chart
+            3day decrease -> pass
+            3day increase -> buy
+            variance
+              -> less than high-X% ? -> buy
+              -> close to high ? -> pass
+    */
+    } else {
+      placeholder();
+    }
+  });
 }
 
 /* ------------------------------------------
@@ -531,6 +569,28 @@ function startMovingETH() {
   }, POLLING);
 }
 
+
+/*
+Get Data
+Store data
+If we are holding, see if we've made 3%
+  sell if we have
+  otherwise pass
+Otherwise see if we should buy
+  24hr constant up -> pass
+  24hr constant down -> pass
+  Variance
+    -> is it 24hr low?
+      yes -> pass
+      no -> low+X%?
+        no -> pass
+        yes -> check weekly chart
+          3day decrease -> pass
+          3day increase -> buy
+          variance
+            -> less than high-X% ? -> buy
+            -> close to high ? -> pass
+*/
 function startPercentBTC() {
   return setInterval(() => {
     // Promise chain to handle logic

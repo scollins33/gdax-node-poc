@@ -18,7 +18,7 @@ class Datum {
     this.bidOrders = pData.bids[0][2];
     this.ask = parseFloat(pData.asks[0][0]);
     this.askSize = pData.asks[0][1];
-    this.aslOrders = pData.bids[0][2];
+    this.askOrders = pData.bids[0][2];
   }
 }
 

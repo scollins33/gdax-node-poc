@@ -60,8 +60,8 @@ const authedClient = new AuthenticatedClient(
 );
 
 // Create the currencies
-const BTC = new Currency('Bitcoin', 'BTC-USD', keychain.btcAccount, './logs/btcBackup.json', './logs/btcHistory.json');
-const ETH = new Currency('Ethereum', 'ETH-USD', keychain.ethAccount, './logs/ethBackup.json', './logs/ethHistory.json');
+const BTC = new Currency('Bitcoin', 'BTC-USD', keychain.btcAccount, './logs/btcBackup.json', './logs/btcHistory.csv');
+const ETH = new Currency('Ethereum', 'ETH-USD', keychain.ethAccount, './logs/ethBackup.json', './logs/ethHistory.csv');
 
 let totalProfit = 0;
 let totalFees = 0;
@@ -80,11 +80,16 @@ const logger = fs.createWriteStream('./logs/debug.txt');
 
 // Check for JSON storage and create it if not
 // backup = short term to load in and graph
-// history = long term for studies
 if (!fs.existsSync('./logs/btcBackup.json')) { fs.writeFileSync('./logs/btcBackup.json', '[]'); }
-if (!fs.existsSync('./logs/btcHistory.json')) { fs.writeFileSync('./logs/btcHistory.json', ''); }
 if (!fs.existsSync('./logs/ethBackup.json')) { fs.writeFileSync('./logs/ethBackup.json', '[]'); }
-if (!fs.existsSync('./logs/ethHistory.json')) { fs.writeFileSync('./logs/ethHistory.json', ''); }
+// history = long term for studies
+const csvHeaders = 'timestamp,sequence,bid,bidSize,bidOrders,ask,askSize,askOrders,\n';
+if (!fs.existsSync('./logs/btcHistory.csv')) {
+  fs.appendFile('./logs/btcHistory.csv', csvHeaders, (err) => { if (err) throw err; });
+}
+if (!fs.existsSync('./logs/ethHistory.csv')) {
+  fs.appendFile('./logs/ethHistory.csv', csvHeaders, (err) => { if (err) throw err; });
+}
 
 
 /* ------------------------------------------
@@ -140,9 +145,8 @@ function writeBackup(pCurrency, pData) {
     });
 
     // open the history file and append data (non-array)
-    fs.appendFile(pCurrency.history, `${JSON.stringify(pData)},`, (err) => {
-      if (err) { reject(err); }
-    });
+    const csvData = `${pData.timestamp},${pData.sequence},${pData.bid},${pData.bidSize},${pData.bidOrders},${pData.ask},${pData.askSize},${pData.askOrders},\n`;
+    fs.appendFile(pCurrency.history, csvData, (err) => { if (err) throw err; });
 
     resolve(true);
   });
@@ -447,6 +451,37 @@ function generatePage() {
   return page;
 }
 
+function dailyDerivative(pDataArray) {
+  // figure out how many data points are in your interval
+  const interval20min = 1200000 / POLLING; // = 20 @ 1min polling
+  const interval60min = 3600000 / POLLING; // = 60 @ 1min polling
+  const interval24hr = 86400000 / POLLING; // = 1440 @ 1min polling
+
+  logit(logger, `${interval20min} ${interval60min} ${interval24hr}`);
+
+  const slopeArray = [];
+  const dataSample = pDataArray.slice(0, interval24hr);
+
+  // loop through sample and generate slopes
+  // 24 hour interval is max
+  // iterate every 20 minutes
+  for (let i = -1; i < interval24hr - 1; i + interval20min) {
+    const start = (i === -1) ? 0 : i;
+    const end = i + interval20min;
+    logit(logger, `Start: ${start}`);
+    logit(logger, `End: ${end}`);
+
+    // since we're buying we want to look at the asks
+    // divide by 20 since we are doing 20 minutes
+    const slope = (dataSample[end].ask - dataSample[start].ask) / 20;
+    slopeArray.push(slope);
+  }
+
+  logit(logger, `Slope Array length: ${slopeArray.length}`);
+  logit(logger, JSON.stringify(slopeArray));
+
+  return slopeArray;
+}
 
 function choosePath(pCurrency) {
   return new Promise((resolve, reject) => {
@@ -486,10 +521,22 @@ function choosePath(pCurrency) {
               -> close to high ? -> pass
     */
     } else {
-      placeholder();
+      // do we even have enough data to decide?
+      // const interval24hr = 86400000 / POLLING; // = 1440 @ 1min polling
+      // if (pCurrency.data.length >= interval24hr) {
+      //   resolve('Weve got 24 hours of data!');
+      // } else {
+      //   logit(logger, `[calcAverages | ${name}] initial ${pCurrency.initial} | havePosition ${pCurrency.status}`);
+      //   reject(new Error('Data History not long enough'));
+      // }
+
+      // generate derivative for 24 hours
+      // check if constant up or down
+      const slope24hr = dailyDerivative(pCurrency.data);
     }
   });
 }
+
 
 /* ------------------------------------------
     START EXPRESS SERVER

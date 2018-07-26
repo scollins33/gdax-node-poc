@@ -573,15 +573,6 @@ app.listen(9033, () => logit(logger, '[WEB] App listening on 9033'));
     BOT CORE LOGIC
   ------------------------------------------ */
 
-// Log that we're starting
-// Used to generate the Websocket connection here
-// Now we're just pull the data every interval
-logit(logger, '[STARTUP] Running bot using below settings:');
-logit(logger, `[STARTUP]  Mode: ${MODE}`);
-logit(logger, `[STARTUP]  Polling: ${POLLING}`);
-logit(logger, `[STARTUP]  Short : ${SHORT_PERIODS}`);
-logit(logger, `[STARTUP]  Long: ${LONG_PERIODS}`);
-
 // Create interval to pull and store data, reset block, and report current status
 // run once for each currency we want to trade
 // Interval is set to the global POLLING
@@ -708,6 +699,15 @@ function startPercentETH() {
 /* ------------------------------------------
     START UP THE BOT
   ------------------------------------------ */
+
+// Log that we're starting
+// Used to generate the Websocket connection here
+// Now we're just pull the data every interval
+logit(logger, '[STARTUP] Running bot using below settings:');
+logit(logger, `[STARTUP]  Mode: ${MODE}`);
+logit(logger, `[STARTUP]  Polling: ${POLLING}`);
+logit(logger, `[STARTUP]  Short : ${SHORT_PERIODS}`);
+logit(logger, `[STARTUP]  Long: ${LONG_PERIODS}`);
 
 if (MODE === 'moving') {
   startMovingBTC();

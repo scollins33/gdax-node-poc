@@ -1,6 +1,7 @@
 /* ------------------------------------------
     REQUIRED PACKAGES
   ------------------------------------------ */
+
 const { AuthenticatedClient } = require('gdax');
 const fs = require('fs');
 const express = require('express');
@@ -10,6 +11,7 @@ const moment = require('moment');
 /* ------------------------------------------
     IMPORT CLASSES
   ------------------------------------------ */
+
 const Currency = require('./classes/currency');
 const Transaction = require('./classes/transaction');
 const Datum = require('./classes/datum');
@@ -18,6 +20,7 @@ const Datum = require('./classes/datum');
 /* ------------------------------------------
     SCRIPT STARTUP CHECKS
   ------------------------------------------ */
+
 if (process.argv.length !== 6) {
   console.log('[HELP] Proper usage:  node bot.js [mode] [polling_rate] [short_period] [long_period]');
   process.exit(1);
@@ -51,6 +54,7 @@ const keychain = JSON.parse(fs.readFileSync('keychain.txt', 'utf8'));
 /* ------------------------------------------
     GLOBALS
   ------------------------------------------ */
+
 // Create the Authorized Client
 const authedClient = new AuthenticatedClient(
   keychain.key,
@@ -70,6 +74,7 @@ let totalFees = 0;
 /* ------------------------------------------
     BOT START UP CHECKS
   ------------------------------------------ */
+
 // Check for backup and logs folders, then create them if missing
 if (!fs.existsSync('./backup')) { fs.mkdirSync('./backup'); }
 if (!fs.existsSync('./logs')) { fs.mkdirSync('./logs'); }
@@ -151,6 +156,11 @@ function writeBackup(pCurrency, pData) {
     resolve(true);
   });
 }
+
+
+/* ------------------------------------------
+    MOVING SPECIFIC HELPER FUNCTIONS
+  ------------------------------------------ */
 
 // Compute and compare moving averages, report on current trend
 // since Datum stores both the bid and ask we can calc on the fly
@@ -451,6 +461,11 @@ function generatePage() {
   return page;
 }
 
+
+/* ------------------------------------------
+    PERCENT SPECIFIC HELPER FUNCTIONS
+  ------------------------------------------ */
+
 function dailyDerivative(pDataArray) {
   // figure out how many data points are in your interval
   const interval20min = 1200000 / POLLING; // = 20 @ 1min polling
@@ -555,12 +570,13 @@ app.listen(9033, () => logit(logger, '[WEB] App listening on 9033'));
 
 
 /* ------------------------------------------
-                BOT CORE LOGIC
-    ------------------------------------------ */
+    BOT CORE LOGIC
+  ------------------------------------------ */
+
 // Log that we're starting
 // Used to generate the Websocket connection here
 // Now we're just pull the data every interval
-logit(logger, `[STARTUP] Running bot using ${SHORT_PERIODS} and ${LONG_PERIODS}`);
+logit(logger, `[STARTUP] Running bot using [ ${MODE} | ${SHORT_PERIODS} | ${LONG_PERIODS} ]`);
 
 // Create interval to pull and store data, reset block, and report current status
 // run once for each currency we want to trade
@@ -683,6 +699,11 @@ function startPercentETH() {
       });
   }, POLLING);
 }
+
+
+/* ------------------------------------------
+    START UP THE BOT
+  ------------------------------------------ */
 
 if (MODE === 'moving') {
   startMovingBTC();

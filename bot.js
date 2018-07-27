@@ -7,6 +7,9 @@ const fs = require('fs');
 const express = require('express');
 const moment = require('moment');
 
+const keychain = JSON.parse(fs.readFileSync('keychain.txt', 'utf8'));
+const plotly = require('plotly')(keychain.plotlyUser, keychain.plotlyAPI);
+
 
 /* ------------------------------------------
     IMPORT CLASSES
@@ -47,8 +50,6 @@ if (Number.isNaN(POLLING) || Number.isNaN(SHORT_PERIODS) || Number.isNaN(LONG_PE
   console.log('[HELP] mode needs to be [ percent ] or [ moving ]');
   process.exit(1);
 }
-
-const keychain = JSON.parse(fs.readFileSync('keychain.txt', 'utf8'));
 
 
 /* ------------------------------------------
@@ -431,6 +432,27 @@ function generatePage() {
   page += `<p>BTC Profit: ${btcProfit}</p>`;
   page += '<br>';
 
+  const trace1 = {
+    x: [1, 2, 3, 4],
+    y: [10, 15, 13, 17],
+    type: 'line',
+  };
+
+  const figure = { data: [trace1] };
+
+  const imgOpts = {
+    format: 'png',
+    width: 1000,
+    height: 500,
+  };
+
+  plotly.getImage(figure, imgOpts, function (error, imageStream) {
+    if (error) return console.log (error);
+
+    const fileStream = fs.createWriteStream('1.png');
+    imageStream.pipe(fileStream);
+  });
+
   btcSnapshot.forEach((each) => {
     page += `<p>Time: ${each.timestamp} | Sequence: ${each.sequence} | Bid: ${each.bid}  | Ask: ${each.ask}</p>`;
   });
@@ -480,8 +502,14 @@ function dailyDerivative(pDataArray) {
   // loop through sample and generate slopes
   // 24 hour interval is max
   // iterate every 20 minutes
-  for (let i = -1; i < interval24hr - 1; i + interval20min) {
-    const start = (i === -1) ? 0 : i;
+  for (let i = -1; i < interval24hr - 1; i += interval20min) {
+    logit(logger, i);
+    let start;
+    if (i === -1) {
+      start = 0;
+    } else {
+      start = i;
+    }
     const end = i + interval20min;
     logit(logger, `Start: ${start}`);
     logit(logger, `End: ${end}`);
@@ -490,10 +518,10 @@ function dailyDerivative(pDataArray) {
     // divide by 20 since we are doing 20 minutes
     const slope = (dataSample[end].ask - dataSample[start].ask) / 20;
     slopeArray.push(slope);
+    logit(logger, JSON.stringify(slopeArray));
   }
 
   logit(logger, `Slope Array length: ${slopeArray.length}`);
-  logit(logger, JSON.stringify(slopeArray));
 
   return slopeArray;
 }
@@ -537,6 +565,7 @@ function choosePath(pCurrency) {
     */
     } else {
       // do we even have enough data to decide?
+
       // const interval24hr = 86400000 / POLLING; // = 1440 @ 1min polling
       // if (pCurrency.data.length >= interval24hr) {
       //   resolve('Weve got 24 hours of data!');
@@ -547,7 +576,8 @@ function choosePath(pCurrency) {
 
       // generate derivative for 24 hours
       // check if constant up or down
-      const slope24hr = dailyDerivative(pCurrency.data);
+      const slopes24hr = dailyDerivative(pCurrency.data);
+
     }
   });
 }

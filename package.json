@@ -2,7 +2,8 @@
   "dependencies": {
     "express": "^4.16.2",
     "gdax": "^0.5.1",
-    "moment": "^2.21.0"
+    "moment": "^2.21.0",
+    "plotly": "^1.0.6"
   },
   "devDependencies": {
     "eslint": "^5.1.0",

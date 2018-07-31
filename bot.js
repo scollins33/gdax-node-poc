@@ -8,7 +8,6 @@ const express = require('express');
 const moment = require('moment');
 
 const keychain = JSON.parse(fs.readFileSync('keychain.txt', 'utf8'));
-const plotly = require('plotly')(keychain.plotlyUser, keychain.plotlyAPI);
 
 
 /* ------------------------------------------
@@ -291,6 +290,119 @@ function decideAction(pCurrency, avgArray) {
   });
 }
 
+
+/* ------------------------------------------
+    PERCENT SPECIFIC HELPER FUNCTIONS
+  ------------------------------------------ */
+
+function dailyDerivative(pName, pDataArray) {
+  logit(logger, `[dailyDerivative | ${pName}] Entering dailyDerivative`);
+  // figure out how many data points are in your interval
+  const interval20min = 1200000 / POLLING; // = 20 @ 1min polling
+  const interval60min = 3600000 / POLLING; // = 60 @ 1min polling
+  const interval24hr = 86400000 / POLLING; // = 1440 @ 1min polling
+
+  logit(logger, `[dailyDerivative | ${pName}] ${interval20min} ${interval60min} ${interval24hr}`);
+
+  const slopeArray = [];
+  const dataSample = pDataArray.slice(0, interval24hr).reverse();
+  let totalAttempts = 0;
+
+  // loop through sample and generate slopes
+  // 24 hour interval is max
+  // iterate every 20 minutes
+  for (let i = -1; i < interval24hr - 1; i += interval20min) {
+    logit(logger, i);
+    let start;
+    if (i === -1) {
+      start = 0;
+    } else {
+      start = i;
+    }
+    const end = i + interval20min;
+
+    // since we're buying we want to look at the asks
+    // divide by the number of intervals in 20 minutes
+    try {
+      const slope = (dataSample[end].ask - dataSample[start].ask) / interval20min;
+      slopeArray.push(slope);
+      logit(logger, JSON.stringify(slopeArray));
+    } catch (err) {
+      logit(logger, `[dailyDerivative | ${pName}] cant calc`);
+    }
+
+    totalAttempts += 1;
+  }
+
+  logit(logger, `[dailyDerivative | ${pName}] Slope Array length: ${slopeArray.length}`);
+  logit(logger, `[dailyDerivative | ${pName}] Total Attempts (72 @ 1min polling): ${totalAttempts}`);
+
+  return slopeArray;
+}
+
+function choosePath(pCurrency) {
+  return new Promise((resolve, reject) => {
+    const name = pCurrency.ticker;
+    logit(logger, `[choosePath | ${name}] Entering dailyDerivative`);
+    /*
+    If we are holding, see if we've made 3%
+      sell if we have
+      otherwise pass
+    */
+    if (pCurrency.status) {
+      const lastTxn = pCurrency.txn[-1];
+
+      // sanity check that we bought on our last transaction
+      if (lastTxn.type === 'buy') {
+        const latestBid = pCurrency.data[0].bid;
+        const targetPrice = lastTxn.price * 1.033;
+
+        if (latestBid >= targetPrice) {
+          resolve({ action: 'sell', message: 'Weve hit 3% gain and fee coverage (0.3%), sell it' });
+        }
+      } else {
+        reject(new Error(`[choosePath | ${name}] Last Txn was NOT buy BUT ${pCurrency.ticker} == true`));
+      }
+    /*
+    Otherwise see if we should buy
+    24hr constant up -> pass
+    24hr constant down -> pass
+    Variance
+      -> is it 24hr low?
+        yes -> pass
+        no -> low+X%?
+          no -> pass
+          yes -> check weekly chart
+            3day decrease -> pass
+            3day increase -> buy
+            variance
+              -> less than high-X% ? -> buy
+              -> close to high ? -> pass
+    */
+    } else {
+      // do we even have enough data to decide?
+
+      // const interval24hr = 86400000 / POLLING; // = 1440 @ 1min polling
+      // if (pCurrency.data.length >= interval24hr) {
+      //   resolve('Weve got 24 hours of data!');
+      // } else {
+      //   logit(logger, `[calcAverages | ${name}] initial ${pCurrency.initial} | havePosition ${pCurrency.status}`);
+      //   reject(new Error('Data History not long enough'));
+      // }
+
+      // generate derivative for 24 hours
+      // check if constant up or down
+      const slopes24hr = dailyDerivative(name, pCurrency.data);
+      logit(logger, `[choosePath | ${name}] ${JSON.stringify(slopes24hr)}0`);
+    }
+  });
+}
+
+
+/* ------------------------------------------
+    SHARED HELPER FUNCTIONS
+  ------------------------------------------ */
+
 // check action decision and follow through on it
 function handleAction(pCurrency, pDecision) {
   return new Promise((resolve, reject) => {
@@ -397,12 +509,20 @@ function handleAction(pCurrency, pDecision) {
   });
 }
 
+
+function generateGraphs() {
+
+}
+
+
 function generatePage() {
   logit(logger, '[generatePage] Entering generatePage');
   const btcSnapshot = BTC.data.slice(0, 10);
   const btcTransacts = BTC.txn.slice(0, 10);
   const ethSnapshot = ETH.data.slice(0, 10);
   const ethTransacts = ETH.txn.slice(0, 10);
+
+  generateGraphs();
 
   // consolidate profit for individual coin
   // if its a buy you (-) if its a sell you (+)
@@ -416,12 +536,18 @@ function generatePage() {
     return sum + each.price - each.fee;
   }, 0);
 
-  let page = '<h1>CRYPTO BOT</h1>';
+  let page = '<head>';
+  page += '<script src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>';
+  page += '<link href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css" rel="stylesheet" type="text/css" />';
+  page += '</head>';
+
+  page += '<h1>CRYPTO BOT</h1>';
   page += `<p>SHORT_PERIODS = ${SHORT_PERIODS}</p>`;
   page += `<p>LONG_PERIODS = ${LONG_PERIODS}</p>`;
   page += '<br>';
   page += `<p>Profit (total): ${totalProfit}</p>`;
   page += `<p>Fees (total): ${totalFees}</p>`;
+
   page += '<br>';
 
   page += '<h1>BTC Performance</h1>';
@@ -430,37 +556,19 @@ function generatePage() {
   page += `<p>Data Length: ${BTC.data.length}</p>`;
   page += `<p>Transactions: ${BTC.txn.length}</p>`;
   page += `<p>BTC Profit: ${btcProfit}</p>`;
+
   page += '<br>';
-
-  const trace1 = {
-    x: [1, 2, 3, 4],
-    y: [10, 15, 13, 17],
-    type: 'line',
-  };
-
-  const figure = { data: [trace1] };
-
-  const imgOpts = {
-    format: 'png',
-    width: 1000,
-    height: 500,
-  };
-
-  plotly.getImage(figure, imgOpts, function (error, imageStream) {
-    if (error) return console.log (error);
-
-    const fileStream = fs.createWriteStream('1.png');
-    imageStream.pipe(fileStream);
-  });
 
   btcSnapshot.forEach((each) => {
     page += `<p>Time: ${each.timestamp} | Sequence: ${each.sequence} | Bid: ${each.bid}  | Ask: ${each.ask}</p>`;
   });
+
   page += '<br>';
 
   btcTransacts.forEach((each) => {
     page += `<p>Time: ${each.timestamp} | Type: ${each.type} | Price: ${each.price}  | Fees: ${each.fee}</p>`;
   });
+
   page += '<br>';
 
   page += '<h1>ETH Performance</h1>';
@@ -481,105 +589,6 @@ function generatePage() {
   });
 
   return page;
-}
-
-
-/* ------------------------------------------
-    PERCENT SPECIFIC HELPER FUNCTIONS
-  ------------------------------------------ */
-
-function dailyDerivative(pDataArray) {
-  // figure out how many data points are in your interval
-  const interval20min = 1200000 / POLLING; // = 20 @ 1min polling
-  const interval60min = 3600000 / POLLING; // = 60 @ 1min polling
-  const interval24hr = 86400000 / POLLING; // = 1440 @ 1min polling
-
-  logit(logger, `${interval20min} ${interval60min} ${interval24hr}`);
-
-  const slopeArray = [];
-  const dataSample = pDataArray.slice(0, interval24hr);
-
-  // loop through sample and generate slopes
-  // 24 hour interval is max
-  // iterate every 20 minutes
-  for (let i = -1; i < interval24hr - 1; i += interval20min) {
-    logit(logger, i);
-    let start;
-    if (i === -1) {
-      start = 0;
-    } else {
-      start = i;
-    }
-    const end = i + interval20min;
-    logit(logger, `Start: ${start}`);
-    logit(logger, `End: ${end}`);
-
-    // since we're buying we want to look at the asks
-    // divide by 20 since we are doing 20 minutes
-    const slope = (dataSample[end].ask - dataSample[start].ask) / 20;
-    slopeArray.push(slope);
-    logit(logger, JSON.stringify(slopeArray));
-  }
-
-  logit(logger, `Slope Array length: ${slopeArray.length}`);
-
-  return slopeArray;
-}
-
-function choosePath(pCurrency) {
-  return new Promise((resolve, reject) => {
-    /*
-    If we are holding, see if we've made 3%
-      sell if we have
-      otherwise pass
-    */
-    if (pCurrency.status) {
-      const lastTxn = pCurrency.txn[-1];
-
-      // sanity check that we bought on our last transaction
-      if (lastTxn.type === 'buy') {
-        const latestBid = pCurrency.data[0].bid;
-        const targetPrice = lastTxn.price * 1.033;
-
-        if (latestBid >= targetPrice) {
-          resolve({ action: 'sell', message: 'Weve hit 3% gain and fee coverage (0.3%), sell it' });
-        }
-      } else {
-        reject(new Error(`[choosePath] Last Transaction was NOT a buy but ${pCurrency.ticker} status is true (obj: ${pCurrency.status})`));
-      }
-    /*
-    Otherwise see if we should buy
-    24hr constant up -> pass
-    24hr constant down -> pass
-    Variance
-      -> is it 24hr low?
-        yes -> pass
-        no -> low+X%?
-          no -> pass
-          yes -> check weekly chart
-            3day decrease -> pass
-            3day increase -> buy
-            variance
-              -> less than high-X% ? -> buy
-              -> close to high ? -> pass
-    */
-    } else {
-      // do we even have enough data to decide?
-
-      // const interval24hr = 86400000 / POLLING; // = 1440 @ 1min polling
-      // if (pCurrency.data.length >= interval24hr) {
-      //   resolve('Weve got 24 hours of data!');
-      // } else {
-      //   logit(logger, `[calcAverages | ${name}] initial ${pCurrency.initial} | havePosition ${pCurrency.status}`);
-      //   reject(new Error('Data History not long enough'));
-      // }
-
-      // generate derivative for 24 hours
-      // check if constant up or down
-      const slopes24hr = dailyDerivative(pCurrency.data);
-
-    }
-  });
 }
 
 

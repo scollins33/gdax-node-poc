@@ -340,6 +340,31 @@ function dailyDerivative(pName, pDataArray) {
   return slopeArray;
 }
 
+function weeklyDerivative(pName, pDataArray) {
+  const slopeArray = [];
+  const dataSample = pDataArray.slice(0).reverse();
+
+  for (let i = 1440; i <= 4320; i += 1440) {
+    const slope = (dataSample[i].ask - dataSample[i - 1440].ask) / 1440;
+    slopeArray.push(slope);
+    logit(logger, JSON.stringify(slopeArray));
+  }
+
+  return slopeArray;
+}
+
+function findHighLow(pDataArray) {
+  let low = pDataArray[0];
+  let high = pDataArray[0];
+
+  pDataArray.forEach((each) => {
+    if (each.ask >= high.ask) { high = each; }
+    if (each.ask <= low.ask) { low = each; }
+  });
+
+  return [low, high];
+}
+
 function choosePath(pCurrency) {
   return new Promise((resolve, reject) => {
     const name = pCurrency.ticker;
@@ -381,19 +406,62 @@ function choosePath(pCurrency) {
     */
     } else {
       // do we even have enough data to decide?
-
-      // const interval24hr = 86400000 / POLLING; // = 1440 @ 1min polling
-      // if (pCurrency.data.length >= interval24hr) {
-      //   resolve('Weve got 24 hours of data!');
-      // } else {
-      //   logit(logger, `[calcAverages | ${name}] initial ${pCurrency.initial} | havePosition ${pCurrency.status}`);
-      //   reject(new Error('Data History not long enough'));
-      // }
+      const interval24hr = 86400000 / POLLING; // = 1440 @ 1min polling
+      if (pCurrency.data.length < interval24hr) {
+        logit(logger, `[calcAverages | ${name}] initial ${pCurrency.initial} | havePosition ${pCurrency.status}`);
+        reject(new Error('Data History not long enough'));
+      } else {
+        logit(logger, 'Weve got 24 hours of data!');
+      }
 
       // generate derivative for 24 hours
       // check if constant up or down
       const slopes24hr = dailyDerivative(name, pCurrency.data);
-      logit(logger, `[choosePath | ${name}] ${JSON.stringify(slopes24hr)}0`);
+      logit(logger, `[choosePath | ${name}] ${JSON.stringify(slopes24hr)}`);
+
+      let allNegative = true;
+      let allPositive = true;
+
+      // handle all positive/negative cases
+      for (let i = 0; i < slopes24hr.length; i += 1) {
+        logit(logger, i);
+        if (slopes24hr[i] > 0) { allNegative = false; }
+        if (slopes24hr[i] < 0) { allPositive = false; }
+      }
+
+      // reject if all neg or pos
+      if (allNegative || allPositive) {
+        logit(logger, `[choosePath | ${name}] allNeg (${allNegative}) or allPos (${allPositive}) is true -> Do nothing`);
+        reject({ action: 'none', message: 'Either all slopes were positive or all negative' });
+      } else {
+        const dailyRecords = findHighLow(pCurrency.data);
+        const dailyLow = dailyRecords[0];
+        const dailyHigh = dailyRecords[1];
+        const latestData = pCurrency.data[0];
+
+        logit(logger, `[choosePath | ${name}] Daily Records: ${JSON.stringify(dailyRecords)}`);
+
+        // if dialy high, reject
+        if (latestData.ask === dailyHigh.ask) {
+          logit(logger, `[choosePath | ${name}] We're at the DAILY HIGH, do nothing`);
+          reject({ action: 'none', message: 'Were at the DAILY HIGH, do nothing' });
+        }
+
+        // if daily low, reject
+        if (latestData.ask === dailyLow.ask) {
+          logit(logger, `[choosePath | ${name}] We're at the DAILY LOW, do nothing`);
+          reject({ action: 'none', message: 'Were at the DAILY LOW, do nothing' });
+        }
+
+        // if our last 20-min slope is positive, look to purchase
+        if (slopes24hr[-1] > 0) {
+          // check pas 3 days of data using the backup data
+          const weeklyRecords = findHighLow(pCurrency.backup);
+          const weeklyLow = weeklyRecords[0];
+          const weeklyHigh = weeklyRecords[1];
+          const weeklySlopes = weeklyDerivative(name, pCurrency.backup);
+        }
+      }
     }
   });
 }

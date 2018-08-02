@@ -241,6 +241,8 @@ function decideAction(pCurrency, avgArray) {
     logit(logger, `[decideAction | ${name}] Entering decideAction}`);
 
     // create move set
+    // short over long = rising
+    // long over short = falling
     const properMove = avgArray[0] > avgArray[1];
 
     // Log the current status before the switch cases
@@ -252,30 +254,34 @@ function decideAction(pCurrency, avgArray) {
 
     switch (properMove) {
       case true:
-        if (pCurrency.initial === true) {
-          logit(logger, `[decideAction | ${name}] Ignored uptick since it's the initial round`);
-          reject({ action: 'none', message: 'Initial Round' });
-          break;
-        }
+        // if (pCurrency.initial === true) {
+        //   logit(logger, `[decideAction | ${name}] Ignored uptick since it's the initial round`);
+        //   reject({ action: 'none', message: 'Initial Round' });
+        //   break;
+        // }
 
-        if (pCurrency.status) {
+        // reversed the check on status as well...
+        if (!pCurrency.status) {
           logit(logger, `[decideAction | ${name}] Price is going UP and we HAVE a position -> do nothing`);
           reject({ action: 'none', message: 'Price UP + Have Position -> Do Nothing' });
         } else {
+          // OPPOSITE DAY - SELL INSTEAD (should be buying)
           logit(logger, `[decideAction | ${name}] Price is going UP and we DO NOT HAVE a position -> BUY`);
-          resolve({ action: 'buy', message: `Price UP + No Position -> BUY ${name}` });
+          resolve({ action: 'sell', message: `Price UP + No Position -> [OPPOSITE DAY] SELL ${name}` });
         }
         break;
 
       case false:
-        if (pCurrency.initial === true) {
-          logit(logger, `[decideAction | ${name}] Flipped Initial Round to false so next uptick is a clean buy`);
-          pCurrency.initial = false;
-        }
+        // if (pCurrency.initial === true) {
+        //   logit(logger, `[decideAction | ${name}] Flipped Initial Round to false so next uptick is a clean buy`);
+        //   pCurrency.initial = false;
+        // }
 
-        if (pCurrency.status) {
+        // reversed the check on status as well...
+        if (!pCurrency.status) {
+          // OPPOSITE DAY - BUY INSTEAD (should be selling)
           logit(logger, `[decideAction | ${name}] Price is going DOWN and we HAVE a position -> SELL`);
-          resolve({ action: 'sell', message: `Price DOWN + Have Position -> SELL ${name}` });
+          resolve({ action: 'buy', message: `Price DOWN + Have Position -> [OPPOSITE DAY] BUY ${name}` });
         } else {
           logit(logger, `[decideAction | ${name}] Price is going DOWN and we DO NOT HAVE a position -> do nothing`);
           reject({ action: 'none', message: 'Price DOWN + No Position -> Do Nothing' });
@@ -408,7 +414,7 @@ function choosePath(pCurrency) {
       // do we even have enough data to decide?
       const interval24hr = 86400000 / POLLING; // = 1440 @ 1min polling
       if (pCurrency.data.length < interval24hr) {
-        logit(logger, `[calcAverages | ${name}] initial ${pCurrency.initial} | havePosition ${pCurrency.status}`);
+        logit(logger, `[choosePath | ${name}] initial ${pCurrency.initial} | havePosition ${pCurrency.status}`);
         reject(new Error('Data History not long enough'));
       } else {
         logit(logger, 'Weve got 24 hours of data!');

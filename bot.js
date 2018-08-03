@@ -380,7 +380,7 @@ function choosePath(pCurrency) {
       // sanity check that we bought on our last transaction
       if (lastTxn.type === 'buy') {
         const latestBid = pCurrency.data[0].bid;
-        const targetPrice = lastTxn.price * 1.033;
+        const targetPrice = lastTxn.price * 1.036;
 
         if (latestBid >= targetPrice) {
           resolve({ action: 'sell', message: 'Weve hit 3% gain and fee coverage (0.3%), sell it' });
@@ -424,7 +424,7 @@ function choosePath(pCurrency) {
 
       // handle all positive/negative cases
       for (let i = 0; i < slopes24hr.length; i += 1) {
-        logit(logger, i);
+        logit(logger, `[choosePath | ${name}] 24 Hour Loop: ${i}`);
         if (slopes24hr[i] > 0) { allNegative = false; }
         if (slopes24hr[i] < 0) { allPositive = false; }
       }
@@ -441,25 +441,40 @@ function choosePath(pCurrency) {
 
         logit(logger, `[choosePath | ${name}] Daily Records: ${JSON.stringify(dailyRecords)}`);
 
-        // if dialy high, reject
-        if (latestData.ask === dailyHigh.ask) {
+        if (latestData.ask >= dailyHigh.ask) {
+          // if dialy high, reject
           logit(logger, `[choosePath | ${name}] We're at the DAILY HIGH, do nothing`);
           reject({ action: 'none', message: 'Were at the DAILY HIGH, do nothing' });
-        }
-
-        // if daily low, reject
-        if (latestData.ask === dailyLow.ask) {
+        } else if (latestData.ask >= dailyLow.ask) {
+          // if daily low, reject
           logit(logger, `[choosePath | ${name}] We're at the DAILY LOW, do nothing`);
           reject({ action: 'none', message: 'Were at the DAILY LOW, do nothing' });
-        }
+        } else if (slopes24hr[-1] > 0 && slopes24hr[-2] < 0) {
+          // if our last 20-min slope is positive and the previous 20-min is negative, look to purchase
+          // check past 3 days of data using the backup data
+          // const weeklyRecords = findHighLow(pCurrency.backup);
+          // const weeklyLow = weeklyRecords[0];
+          // const weeklyHigh = weeklyRecords[1];
+          const threeDaySlopes = weeklyDerivative(name, pCurrency.backup);
+          let threeDayNegative = true;
+          let threeDayPositive = true;
 
-        // if our last 20-min slope is positive, look to purchase
-        if (slopes24hr[-1] > 0) {
-          // check pas 3 days of data using the backup data
-          const weeklyRecords = findHighLow(pCurrency.backup);
-          const weeklyLow = weeklyRecords[0];
-          const weeklyHigh = weeklyRecords[1];
-          const weeklySlopes = weeklyDerivative(name, pCurrency.backup);
+          // handle all positive/negative cases
+          for (let i = 0; i < threeDaySlopes.length; i += 1) {
+            logit(logger, `[choosePath | ${name}] 3 Day Loop: ${i}`);
+            if (threeDaySlopes[i] > 0) { threeDayNegative = false; }
+            if (threeDaySlopes[i] < 0) { threeDayPositive = false; }
+          }
+
+          logit(logger, `[choosePath | ${name}] 3 Day Slopes: ${JSON.stringify(threeDaySlopes)}`);
+
+          if (threeDayNegative || threeDayPositive) {
+            logit(logger, `[choosePath | ${name}] 3dayNeg (${allNegative}) or 3dayPos (${allPositive}) is true -> Do nothing`);
+            reject({ action: 'none', message: 'Either all slopes were positive or all negative' });
+          } else {
+            logit(logger, `[choosePath | ${name}] Weve made it this far in the logic so fucking buy`);
+            reject({ action: 'buy', message: 'Weve made it this far in the logic so fucking buy' });
+          }
         }
       }
     }

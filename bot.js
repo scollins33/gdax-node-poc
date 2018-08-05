@@ -327,7 +327,7 @@ function dailyDerivative(pName, pDataArray) {
       slopeArray.push(slope);
     } catch (err) {
       // log to the console since we don't want to fill up the real logs with
-      console.log(logger, `[dailyDerivative | ${pName}] cant calc`);
+      console.log(`[dailyDerivative | ${pName}] cant calc`);
     }
 
     totalAttempts += 1;
@@ -394,10 +394,9 @@ function choosePath(pCurrency) {
       // do we even have enough data to decide?
       const interval24hr = 86400000 / POLLING; // = 1440 @ 1min polling
       if (pCurrency.data.length < interval24hr) {
-        logit(logger, `[calcAverages | ${name}] initial ${pCurrency.initial} | havePosition ${pCurrency.status}`);
+        logit(logger, `[choosePath | ${name}] initial ${pCurrency.initial} | havePosition ${pCurrency.status}`);
         reject(new Error('Data History not long enough'));
-      } else {
-        logit(logger, 'Weve got 24 hours of data!');
+        return;
       }
 
       // generate derivative for 24 hours

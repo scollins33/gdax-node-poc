@@ -328,7 +328,8 @@ function dailyDerivative(pName, pDataArray) {
       slopeArray.push(slope);
       logit(logger, JSON.stringify(slopeArray));
     } catch (err) {
-      logit(logger, `[dailyDerivative | ${pName}] cant calc`);
+      // log to the console since we don't want to fill up the real logs with this
+      console.log(err);
     }
 
     totalAttempts += 1;

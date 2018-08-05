@@ -734,38 +734,17 @@ function startMovingETH() {
   }, POLLING);
 }
 
-
-/*
-Get Data
-Store data
-If we are holding, see if we've made 3%
-  sell if we have
-  otherwise pass
-Otherwise see if we should buy
-  24hr constant up -> pass
-  24hr constant down -> pass
-  Variance
-    -> is it 24hr low?
-      yes -> pass
-      no -> low+X%?
-        no -> pass
-        yes -> check weekly chart
-          3day decrease -> pass
-          3day increase -> buy
-          variance
-            -> less than high-X% ? -> buy
-            -> close to high ? -> pass
-*/
 function startPercentBTC() {
   return setInterval(() => {
     // Promise chain to handle logic
     pullData(BTC)
       .then(data => writeBackup(BTC, data))
       .then(() => choosePath(BTC))
-      // .then((result) => {
-      //   logit(logger, result);
-      //   logit(logger, '* ------------------------------------------ *');
-      // })
+      .then(decision => handleAction(BTC, decision))
+      .then((result) => {
+        logit(logger, result);
+        logit(logger, '* ------------------------------------------ *');
+      })
       .catch((err) => {
         if (err.action) {
           logit(logger, `[Promise Chain | ${BTC.ticker}] Error.action: ${err.action}`);
@@ -785,10 +764,11 @@ function startPercentETH() {
     pullData(ETH)
       .then(data => writeBackup(ETH, data))
       .then(() => choosePath(ETH))
-      // .then((result) => {
-      //   logit(logger, result);
-      //   logit(logger, '* ------------------------------------------ *');
-      // })
+      .then(decision => handleAction(ETH, decision))
+      .then((result) => {
+        logit(logger, result);
+        logit(logger, '* ------------------------------------------ *');
+      })
       .catch((err) => {
         if (err.action) {
           logit(logger, `[Promise Chain | ${ETH.ticker}] Error.action: ${err.action}`);

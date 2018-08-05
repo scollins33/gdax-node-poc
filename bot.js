@@ -1,3 +1,5 @@
+import { last } from 'rxjs/operator/last';
+
 /* ------------------------------------------
     REQUIRED PACKAGES
   ------------------------------------------ */
@@ -369,11 +371,8 @@ function choosePath(pCurrency) {
   return new Promise((resolve, reject) => {
     const name = pCurrency.ticker;
     logit(logger, `[choosePath | ${name}] Entering dailyDerivative`);
-    /*
-    If we are holding, see if we've made 3%
-      sell if we have
-      otherwise pass
-    */
+
+    // if we have currency, see if we should sell (+3% or -5%)
     if (pCurrency.status) {
       const lastTxn = pCurrency.txn[-1];
 
@@ -381,29 +380,19 @@ function choosePath(pCurrency) {
       if (lastTxn.type === 'buy') {
         const latestBid = pCurrency.data[0].bid;
         const targetPrice = lastTxn.price * 1.036;
+        const bailPrice = lastTxn.price * 0.956;
 
         if (latestBid >= targetPrice) {
-          resolve({ action: 'sell', message: 'Weve hit 3% gain and fee coverage (0.3%), sell it' });
+          resolve({ action: 'sell', message: 'Weve hit 3% gain with fee coverage (0.6%), sell it' });
+        } else if (latestBid <= bailPrice) {
+          resolve({ action: 'sell', message: 'Were lost 5% with fee coverage (0.6%), sell it' });
+        } else {
+          reject({ action: 'none', message: 'We have currency but have not reached a threshold (+ or -)' });
         }
       } else {
         reject(new Error(`[choosePath | ${name}] Last Txn was NOT buy BUT ${pCurrency.ticker} == true`));
       }
-    /*
-    Otherwise see if we should buy
-    24hr constant up -> pass
-    24hr constant down -> pass
-    Variance
-      -> is it 24hr low?
-        yes -> pass
-        no -> low+X%?
-          no -> pass
-          yes -> check weekly chart
-            3day decrease -> pass
-            3day increase -> buy
-            variance
-              -> less than high-X% ? -> buy
-              -> close to high ? -> pass
-    */
+    // otherwise look to buy (check 24-hour data then 3-day data)
     } else {
       // do we even have enough data to decide?
       const interval24hr = 86400000 / POLLING; // = 1440 @ 1min polling
@@ -452,9 +441,6 @@ function choosePath(pCurrency) {
         } else if (slopes24hr[-1] > 0 && slopes24hr[-2] < 0) {
           // if our last 20-min slope is positive and the previous 20-min is negative, look to purchase
           // check past 3 days of data using the backup data
-          // const weeklyRecords = findHighLow(pCurrency.backup);
-          // const weeklyLow = weeklyRecords[0];
-          // const weeklyHigh = weeklyRecords[1];
           const threeDaySlopes = weeklyDerivative(name, pCurrency.backup);
           let threeDayNegative = true;
           let threeDayPositive = true;
@@ -468,8 +454,9 @@ function choosePath(pCurrency) {
 
           logit(logger, `[choosePath | ${name}] 3 Day Slopes: ${JSON.stringify(threeDaySlopes)}`);
 
+          // if the last 3 days are variable then lets go ahead and buy
           if (threeDayNegative || threeDayPositive) {
-            logit(logger, `[choosePath | ${name}] 3dayNeg (${allNegative}) or 3dayPos (${allPositive}) is true -> Do nothing`);
+            logit(logger, `[choosePath | ${name}] 3dayNeg (${allNegative}) or 3dayPos (${allPositive}) -> Do nothing`);
             reject({ action: 'none', message: 'Either all slopes were positive or all negative' });
           } else {
             logit(logger, `[choosePath | ${name}] Weve made it this far in the logic so fucking buy`);

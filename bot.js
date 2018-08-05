@@ -312,7 +312,6 @@ function dailyDerivative(pName, pDataArray) {
   // 24 hour interval is max
   // iterate every 20 minutes
   for (let i = -1; i < interval24hr - 1; i += interval20min) {
-    logit(logger, i);
     let start;
     if (i === -1) {
       start = 0;
@@ -326,10 +325,9 @@ function dailyDerivative(pName, pDataArray) {
     try {
       const slope = (dataSample[end].ask - dataSample[start].ask) / interval20min;
       slopeArray.push(slope);
-      logit(logger, JSON.stringify(slopeArray));
     } catch (err) {
-      // log to the console since we don't want to fill up the real logs with this
-      console.log(err);
+      // log to the console since we don't want to fill up the real logs with
+      console.log(logger, `[dailyDerivative | ${pName}] cant calc`);
     }
 
     totalAttempts += 1;
@@ -348,9 +346,9 @@ function weeklyDerivative(pName, pDataArray) {
   for (let i = 1440; i <= 4320; i += 1440) {
     const slope = (dataSample[i].ask - dataSample[i - 1440].ask) / 1440;
     slopeArray.push(slope);
-    logit(logger, JSON.stringify(slopeArray));
   }
 
+  logit(logger, `[weeklyDerivative | ${pName}] Slopes: ${JSON.stringify(slopeArray)}`);
   return slopeArray;
 }
 
@@ -369,7 +367,7 @@ function findHighLow(pDataArray) {
 function choosePath(pCurrency) {
   return new Promise((resolve, reject) => {
     const name = pCurrency.ticker;
-    logit(logger, `[choosePath | ${name}] Entering dailyDerivative`);
+    logit(logger, `[choosePath | ${name}] Entering choosePath`);
 
     // if we have currency, see if we should sell (+3% or -5%)
     if (pCurrency.status) {
@@ -405,7 +403,8 @@ function choosePath(pCurrency) {
       // generate derivative for 24 hours
       // check if constant up or down
       const slopes24hr = dailyDerivative(name, pCurrency.data);
-      logit(logger, `[choosePath | ${name}] ${JSON.stringify(slopes24hr)}`);
+      logit(logger, `[choosePath | ${name}] Back in choosePath`);
+      logit(logger, `[choosePath | ${name}] Returned Slopes: ${JSON.stringify(slopes24hr)}`);
 
       let allNegative = true;
       let allPositive = true;

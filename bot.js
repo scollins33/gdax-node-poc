@@ -410,7 +410,6 @@ function choosePath(pCurrency) {
 
       // handle all positive/negative cases
       for (let i = 0; i < slopes24hr.length; i += 1) {
-        logit(logger, `[choosePath | ${name}] 24 Hour Loop: ${i}`);
         if (slopes24hr[i] > 0) { allNegative = false; }
         if (slopes24hr[i] < 0) { allPositive = false; }
       }

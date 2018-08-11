@@ -430,25 +430,26 @@ function choosePath(pCurrency) {
           // if dialy high, reject
           logit(logger, `[choosePath | ${name}] We're at the DAILY HIGH, do nothing`);
           reject({ action: 'none', message: 'Were at the DAILY HIGH, do nothing' });
-        } else if (latestData.ask >= dailyLow.ask) {
+        } else if (latestData.ask <= dailyLow.ask) {
           // if daily low, reject
           logit(logger, `[choosePath | ${name}] We're at the DAILY LOW, do nothing`);
           reject({ action: 'none', message: 'Were at the DAILY LOW, do nothing' });
         } else if (slopes24hr[-1] > 0 && slopes24hr[-2] < 0) {
+          logit(logger, `[choosePath | ${name}] Not at Daily Low or Daily High, checking 3-day numbers`);
+
           // if our last 20-min slope is positive and the previous 20-min is negative, look to purchase
           // check past 3 days of data using the backup data
           const threeDaySlopes = weeklyDerivative(name, pCurrency.backup);
           let threeDayNegative = true;
           let threeDayPositive = true;
 
+          logit(logger, `[choosePath | ${name}] 3 Day Slopes: ${JSON.stringify(threeDaySlopes)}`);
+
           // handle all positive/negative cases
           for (let i = 0; i < threeDaySlopes.length; i += 1) {
-            logit(logger, `[choosePath | ${name}] 3 Day Loop: ${i}`);
             if (threeDaySlopes[i] > 0) { threeDayNegative = false; }
             if (threeDaySlopes[i] < 0) { threeDayPositive = false; }
           }
-
-          logit(logger, `[choosePath | ${name}] 3 Day Slopes: ${JSON.stringify(threeDaySlopes)}`);
 
           // if the last 3 days are variable then lets go ahead and buy
           if (threeDayNegative || threeDayPositive) {

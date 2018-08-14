@@ -76,7 +76,6 @@ let totalFees = 0;
   ------------------------------------------ */
 
 // Check for backup and logs folders, then create them if missing
-if (!fs.existsSync('./backup')) { fs.mkdirSync('./backup'); }
 if (!fs.existsSync('./logs')) { fs.mkdirSync('./logs'); }
 
 // create logs file if needed and open logging stream

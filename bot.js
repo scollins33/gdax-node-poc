@@ -85,8 +85,30 @@ const logger = fs.createWriteStream('./logs/debug.txt');
 
 // Check for JSON storage and create it if not
 // backup = short term to load in and graph
-if (!fs.existsSync('./logs/btcBackup.json')) { fs.writeFileSync('./logs/btcBackup.json', '[]'); }
-if (!fs.existsSync('./logs/ethBackup.json')) { fs.writeFileSync('./logs/ethBackup.json', '[]'); }
+if (!fs.existsSync('./logs/btcBackup.json')) {
+  fs.writeFileSync('./logs/btcBackup.json', '[]');
+} else {
+  fs.readFile('./logs/btcBackup.json', 'utf-8', (err, data) => {
+    if (err) { logit(logger, `BTC Backup | ${err}`); }
+
+    const backup = JSON.parse(data);
+    BTC.takeBackup(backup.slice(0, LONG_PERIODS));
+    logit(logger, `BTC Backup | Read in backup file for BTC, new data length: ${BTC.data.length}`);
+  });
+}
+
+if (!fs.existsSync('./logs/ethBackup.json')) {
+  fs.writeFileSync('./logs/ethBackup.json', '[]');
+} else {
+  fs.readFile('./logs/ethBackup.json', 'utf-8', (err, data) => {
+    if (err) { logit(logger, `ETH Backup | ${err}`); }
+
+    const backup = JSON.parse(data);
+    ETH.takeBackup(backup.slice(0, LONG_PERIODS));
+    logit(logger, `ETH Backup | Read in backup file for ETH, new data length: ${ETH.data.length}`);
+  });
+}
+
 // history = long term for studies
 const csvHeaders = 'timestamp,sequence,bid,bidSize,bidOrders,ask,askSize,askOrders,\n';
 if (!fs.existsSync('./logs/btcHistory.csv')) {

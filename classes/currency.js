@@ -22,6 +22,10 @@ class Currency {
   addTxn(pTxn) {
     this.txn.push(pTxn);
   }
+
+  takeBackup(pArray) {
+    this.data = pArray;
+  }
 }
 
 module.exports = Currency;

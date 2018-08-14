@@ -403,7 +403,7 @@ function choosePath(pCurrency) {
       // check if constant up or down
       const slopes24hr = dailyDerivative(name, pCurrency.data);
       logit(logger, `[choosePath | ${name}] Back in choosePath`);
-      logit(logger, `[choosePath | ${name}] Returned Slopes: ${JSON.stringify(slopes24hr)}`);
+      logit(logger, `[choosePath | ${name}] 24-hour Slopes: ${JSON.stringify(slopes24hr)}`);
 
       let allNegative = true;
       let allPositive = true;
@@ -425,6 +425,7 @@ function choosePath(pCurrency) {
         const latestData = pCurrency.data[0];
 
         logit(logger, `[choosePath | ${name}] Daily Records: ${JSON.stringify(dailyRecords)}`);
+        logit(logger, `[choosePath | ${name}] Latest Data: ${JSON.stringify(latestData)}`);
 
         if (latestData.ask >= dailyHigh.ask) {
           // if dialy high, reject
@@ -457,8 +458,13 @@ function choosePath(pCurrency) {
             reject({ action: 'none', message: 'Either all slopes were positive or all negative' });
           } else {
             logit(logger, `[choosePath | ${name}] Weve made it this far in the logic so fucking buy`);
-            reject({ action: 'buy', message: 'Weve made it this far in the logic so fucking buy' });
+            resolve({ action: 'buy', message: 'Weve made it this far in the logic so fucking buy' });
           }
+        } else {
+          // catch all case to log that stuff didnt match
+          logit(logger, `[choosePath | ${name}] Did not meet the requirements to buy`);
+          logit(logger, `[choosePath | ${name}] ${slopes24hr[-1]} !> 0 && ${slopes24hr[-2]} !< 0`);
+          reject({ action: 'none', message: 'Did not meet the requirements to buy' });
         }
       }
     }

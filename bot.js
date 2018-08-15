@@ -424,6 +424,7 @@ function choosePath(pCurrency) {
       // generate derivative for 24 hours
       // check if constant up or down
       const slopes24hr = dailyDerivative(name, pCurrency.data);
+      const slopes24hrLen = slopes24hr.length;
       logit(logger, `[choosePath | ${name}] Back in choosePath`);
       logit(logger, `[choosePath | ${name}] 24-hour Slopes: ${JSON.stringify(slopes24hr)}`);
 
@@ -431,7 +432,7 @@ function choosePath(pCurrency) {
       let allPositive = true;
 
       // handle all positive/negative cases
-      for (let i = 0; i < slopes24hr.length; i += 1) {
+      for (let i = 0; i < slopes24hrLen; i += 1) {
         if (slopes24hr[i] > 0) { allNegative = false; }
         if (slopes24hr[i] < 0) { allPositive = false; }
       }
@@ -457,8 +458,9 @@ function choosePath(pCurrency) {
           // if daily low, reject
           logit(logger, `[choosePath | ${name}] We're at the DAILY LOW, do nothing`);
           reject({ action: 'none', message: 'Were at the DAILY LOW, do nothing' });
-        } else if (slopes24hr[-1] > 0 && slopes24hr[-2] < 0) {
+        } else if (slopes24hr[slopes24hrLen - 2] < 0 && slopes24hr[slopes24hrLen - 1] > 0) {
           logit(logger, `[choosePath | ${name}] Not at Daily Low or Daily High, checking 3-day numbers`);
+          logit(logger, `[choosePath | ${name}] Latest slope positive, slope before is negative so were in a trough`);
 
           // if our last 20-min slope is positive and the previous 20-min is negative, look to purchase
           // check past 3 days of data using the backup data
@@ -485,7 +487,7 @@ function choosePath(pCurrency) {
         } else {
           // catch all case to log that stuff didnt match
           logit(logger, `[choosePath | ${name}] Did not meet the requirements to buy`);
-          logit(logger, `[choosePath | ${name}] ${slopes24hr[-1]} !> 0 && ${slopes24hr[-2]} !< 0`);
+          logit(logger, `[choosePath | ${name}] FAILED CHECK: ${slopes24hr[slopes24hrLen - 2]} < 0 && ${slopes24hr[slopes24hrLen - 1]} > 0`);
           reject({ action: 'none', message: 'Did not meet the requirements to buy' });
         }
       }

@@ -70,6 +70,13 @@ const ETH = new Currency('Ethereum', 'ETH-USD', keychain.ethAccount, './logs/eth
 let totalProfit = 0;
 let totalFees = 0;
 
+// Helper function to consolelog and writelog
+// putting this here so ESLint is happy......
+function logit(pStream, pMessage) {
+  console.log(`${moment().format('MM/DD/YYYY HH:mm:ss SSS')} | ${pMessage}`);
+  pStream.write(`${moment().format('MM/DD/YYYY HH:mm:ss SSS')} | ${pMessage} \n`);
+}
+
 
 /* ------------------------------------------
     BOT START UP CHECKS
@@ -121,12 +128,6 @@ if (!fs.existsSync('./logs/ethHistory.csv')) {
 /* ------------------------------------------
     HELPER FUNCTIONS
   ------------------------------------------ */
-
-// Helper function to consolelog and writelog
-function logit(pStream, pMessage) {
-  console.log(`${moment().format('MM/DD/YYYY HH:mm:ss SSS')} | ${pMessage}`);
-  pStream.write(`${moment().format('MM/DD/YYYY HH:mm:ss SSS')} | ${pMessage} \n`);
-}
 
 // Deal with storage of the block and catch empty/trouble blocks in case of connection loss
 // @TODO need to handle case of empty/failed fetch

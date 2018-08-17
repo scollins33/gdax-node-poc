@@ -363,13 +363,7 @@ function dailyDerivative(pName, pDataArray) {
 
 function weeklyDerivative(pName, pFilename) {
   const slopeArray = [];
-  let dataArray = [];
-
-  fs.readFileSync(pFilename, 'utf-8', (err, data) => {
-    if (err) { return new Error(`weeklyDerivative | ${err}`); }
-    logit(logger, `[weeklyDerivative | ${pName}] Backup file read, parsing and storing in dataArray`);
-    dataArray = JSON.parse(data);
-  });
+  const dataArray = JSON.parse(fs.readFileSync(pFilename, 'utf-8'));
 
   const dataSample = dataArray.slice(0).reverse();
   logit(logger, `[weeklyDerivative | ${pName}] dataSample len: ${dataSample.length}`);

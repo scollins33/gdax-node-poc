@@ -164,7 +164,7 @@ function writeBackup(pCurrency, pData) {
 
       const backup = JSON.parse(data);
       backup.unshift(pData);
-      if (backup.length >= 4320) { backup.pop(); }
+      if (backup.length > 4320) { backup.pop(); }
 
       fs.writeFile(pCurrency.backup, JSON.stringify(backup), (writeErr) => {
         if (writeErr) { reject(writeErr); }

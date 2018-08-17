@@ -405,7 +405,7 @@ function choosePath(pCurrency) {
 
     // if we have currency, see if we should sell (+3% or -5%)
     if (pCurrency.status) {
-      const lastTxn = pCurrency.txn[pCurrency.length - 1];
+      const lastTxn = pCurrency.txn[pCurrency.txn.length - 1];
 
       // sanity check that we bought on our last transaction
       if (lastTxn.type === 'buy') {

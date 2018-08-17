@@ -368,13 +368,17 @@ function weeklyDerivative(pName, pFilename) {
   const dataSample = dataArray.slice(0).reverse();
   logit(logger, `[weeklyDerivative | ${pName}] dataSample len: ${dataSample.length}`);
 
-  for (let i = 1440; i <= 4320; i += 1440) {
-    const later = dataSample[i];
-    const sooner = dataSample[i - 1440];
-    logit(logger, `[weeklyDerivative | ${pName}] later: ${JSON.stringify(dataSample[i])}`);
-    logit(logger, `[weeklyDerivative | ${pName}] later: ${JSON.stringify(dataSample[i - 1440])}`);
+  for (let i = -1; i < 4319; i += 1440) {
+    // @TODO -- need to hit 0-1439, 1439-2879, and 2879-4319
+    let start;
+    if (i === -1) {
+      start = 0;
+    } else {
+      start = i;
+    }
+    const end = i + 1440;
 
-    const slope = (later.ask - sooner.ask) / 1440;
+    const slope = (dataSample[end].ask - dataSample[start].ask) / 1440;
     slopeArray.push(slope);
   }
 

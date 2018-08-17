@@ -361,9 +361,18 @@ function dailyDerivative(pName, pDataArray) {
   return slopeArray;
 }
 
-function weeklyDerivative(pName, pDataArray) {
+function weeklyDerivative(pName, pFilename) {
   const slopeArray = [];
-  const dataSample = pDataArray.slice(0).reverse();
+  let dataArray = [];
+
+  fs.readFileSync(pFilename, 'utf-8', (err, data) => {
+    if (err) { return new Error(`weeklyDerivative | ${err}`); }
+    logit(logger, `[weeklyDerivative | ${pName}] Backup file read, parsing and storing in dataArray`);
+    dataArray = JSON.parse(data);
+  });
+
+  const dataSample = dataArray.slice(0).reverse();
+  logit(logger, `[weeklyDerivative | ${pName}] dataSample len: ${dataSample.length}`);
 
   for (let i = 1440; i <= 4320; i += 1440) {
     const slope = (dataSample[i].ask - dataSample[i - 1440].ask) / 1440;

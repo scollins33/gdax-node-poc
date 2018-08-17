@@ -369,7 +369,12 @@ function weeklyDerivative(pName, pFilename) {
   logit(logger, `[weeklyDerivative | ${pName}] dataSample len: ${dataSample.length}`);
 
   for (let i = 1440; i <= 4320; i += 1440) {
-    const slope = (dataSample[i].ask - dataSample[i - 1440].ask) / 1440;
+    const later = dataSample[i];
+    const sooner = dataSample[i - 1440];
+    logit(logger, `[weeklyDerivative | ${pName}] later: ${JSON.stringify(dataSample[i])}`);
+    logit(logger, `[weeklyDerivative | ${pName}] later: ${JSON.stringify(dataSample[i - 1440])}`);
+
+    const slope = (later.ask - sooner.ask) / 1440;
     slopeArray.push(slope);
   }
 

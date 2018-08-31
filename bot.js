@@ -200,16 +200,16 @@ function calcAverages(pCurrency) {
     let coinShortAvg = null;
     let coinLongAvg = null;
 
-    if (pCurrency.status) {
+    if (pCurrency.holding) {
       // if we have a position look at the asks
-      logit(logger, `[calcAverages | ${name}] .status = true >> looking at ASKS`);
+      logit(logger, `[calcAverages | ${name}] .holding = true >> looking at ASKS`);
       coinShortTotal = coinShort.reduce((sum, cur) => sum + cur.ask, 0);
       coinLongTotal = coinLong.reduce((sum, cur) => sum + cur.ask, 0);
       coinShortAvg = Math.round(coinShortTotal / SHORT_PERIODS * 100) / 100;
       coinLongAvg = Math.round(coinLongTotal / LONG_PERIODS * 100) / 100;
     } else {
       // if we do not, look at the bids
-      logit(logger, `[calcAverages | ${name}] .status = false >> looking at BIDS`);
+      logit(logger, `[calcAverages | ${name}] .holding = false >> looking at BIDS`);
       coinShortTotal = coinShort.reduce((sum, cur) => sum + cur.bid, 0);
       coinLongTotal = coinLong.reduce((sum, cur) => sum + cur.bid, 0);
       coinShortAvg = Math.round(coinShortTotal / SHORT_PERIODS * 100) / 100;
@@ -227,7 +227,7 @@ function calcAverages(pCurrency) {
         coinLongAvg,
       ]);
     } else {
-      logit(logger, `[calcAverages | ${name}] initial ${pCurrency.initial} | havePosition ${pCurrency.status}`);
+      logit(logger, `[calcAverages | ${name}] initial ${pCurrency.initial} | havePosition ${pCurrency.holding}`);
       reject(new Error('Data History not long enough'));
     }
   });
@@ -265,11 +265,11 @@ function decideAction(pCurrency, avgArray) {
     // create move set
     const properMove = avgArray[0] > avgArray[1];
 
-    // Log the current status before the switch cases
+    // Log the current holding before the switch cases
     const statusString = `[decideAction | ${name}]`
     + `initial ${pCurrency.initial} | `
     + `properMove ${properMove} | `
-    + `havePosition ${pCurrency.status}`;
+    + `havePosition ${pCurrency.holding}`;
     logit(logger, statusString);
 
     switch (properMove) {
@@ -280,7 +280,7 @@ function decideAction(pCurrency, avgArray) {
           break;
         }
 
-        if (pCurrency.status) {
+        if (pCurrency.holding) {
           logit(logger, `[decideAction | ${name}] Price is going UP and we HAVE a position -> do nothing`);
           reject({ action: 'none', message: 'Price UP + Have Position -> Do Nothing' });
         } else {
@@ -295,7 +295,7 @@ function decideAction(pCurrency, avgArray) {
           pCurrency.initial = false;
         }
 
-        if (pCurrency.status) {
+        if (pCurrency.holding) {
           logit(logger, `[decideAction | ${name}] Price is going DOWN and we HAVE a position -> SELL`);
           resolve({ action: 'sell', message: `Price DOWN + Have Position -> SELL ${name}` });
         } else {
@@ -404,10 +404,12 @@ function choosePath(pCurrency) {
     logit(logger, `[choosePath | ${name}] Entering choosePath`);
 
     // if we have currency, see if we should sell (+3% or -5%)
-    if (pCurrency.status) {
+    // ignoring cooldown since we want to sell no matter what
+    if (pCurrency.holding) {
       const lastTxn = pCurrency.txn[pCurrency.txn.length - 1];
 
       // sanity check that we bought on our last transaction
+      // @TODO this sanity check will become an account pull for how much currency we have (!= 0)
       if (lastTxn.type === 'buy') {
         const latestBid = pCurrency.data[0].bid;
         const targetPrice = lastTxn.price * 1.036;
@@ -425,10 +427,36 @@ function choosePath(pCurrency) {
       }
     // otherwise look to buy (check 24-hour data then 3-day data)
     } else {
+      // Are we on cooldown?
+      if (pCurrency.cooldown) {
+        // set the 6 hr interval and interate the cdTimer
+        const interval6hr = 21600000 / POLLING; // = 360 @ 1min polling
+
+        // if the timer is less than interval we are still on cooldown, iterate the timer and close out
+        if (pCurrency.cdTimer < interval6hr) {
+          logit(logger, `[choosePath | Cooldown: ${pCurrency.cooldown} | ${pCurrency.cdTimer}`);
+          reject(new Error('We are currently on cooldown'));
+          pCurrency.cdTimer += 1;
+          return;
+        }
+
+        // if the timer is greater than inverval we've completed out 6 hours
+        if (pCurrency.cdTimer >= interval6hr) {
+          logit(logger, `[choosePath | Cooldown: ${pCurrency.cooldown} | ${pCurrency.cdTimer}`);
+          logit(logger, '[choosePath | coming off cooldown since weve waited 6 hours');
+          pCurrency.cooldown = false;
+          pCurrency.cdTimer = 0;
+        // catch log just in case something bad happens
+        } else {
+          logit(logger, `[choosePath | Cooldown: ${pCurrency.cooldown} | ${pCurrency.cdTimer}`);
+          reject(new Error('Code thinks cooldown is true but something is wrong with cdTimer'));
+        }
+      }
+
       // do we even have enough data to decide?
       const interval24hr = 86400000 / POLLING; // = 1440 @ 1min polling
       if (pCurrency.data.length < interval24hr) {
-        logit(logger, `[choosePath | ${name}] initial ${pCurrency.initial} | havePosition ${pCurrency.status}`);
+        logit(logger, `[choosePath | ${name}] initial ${pCurrency.initial} | havePosition ${pCurrency.holding}`);
         reject(new Error('Data History not long enough'));
         return;
       }
@@ -559,9 +587,9 @@ function handleAction(pCurrency, pDecision) {
               logit(logger, `[handleAction | ${name}] Total Transactions: ${pCurrency.txn.length}`);
               totalFees += buyFee;
 
-              // swap status to true since we bought
-              pCurrency.status = true;
-              logit(logger, `[handleAction | ${name}] havePosition is now ${pCurrency.status}`);
+              // swap holding to true since we bought
+              pCurrency.holding = true;
+              logit(logger, `[handleAction | ${name}] havePosition is now ${pCurrency.holding}`);
               resolve(`[handleAction | ${name}] Purchase completely processed`);
               break;
             }
@@ -582,13 +610,16 @@ function handleAction(pCurrency, pDecision) {
               const sellTxn = new Transaction('sell', sellPrice, sellFee);
               pCurrency.addTxn(sellTxn);
 
+              // put the currency on cooldown since we just sold
+              pCurrency.cooldown = true;
+
               logit(logger, `[handleAction | ${name}] Sold for USD @ ${sellTxn.price}/coin and ${sellTxn.fee} fee`);
               logit(logger, `[handleAction | ${name}] Total Transactions: ${pCurrency.txn.length}`);
               totalFees += sellFee;
 
-              // swap status to true since we sold
-              pCurrency.status = false;
-              logit(logger, `[handleAction | ${name}] havePosition is now ${pCurrency.status}`);
+              // swap holding to true since we sold
+              pCurrency.holding = false;
+              logit(logger, `[handleAction | ${name}] havePosition is now ${pCurrency.holding}`);
 
               // Calculate the profit since we sold stuff
               // use the transactions just to test each out
@@ -660,7 +691,7 @@ function generatePage() {
   page += '<br>';
 
   page += '<h1>BTC Performance</h1>';
-  page += `<p>Have position? ${BTC.status}</p>`;
+  page += `<p>Have position? ${BTC.holding}</p>`;
   page += `<p>Initial round? ${BTC.initial}</p>`;
   page += `<p>Data Length: ${BTC.data.length}</p>`;
   page += `<p>Transactions: ${BTC.txn.length}</p>`;
@@ -681,7 +712,7 @@ function generatePage() {
   page += '<br>';
 
   page += '<h1>ETH Performance</h1>';
-  page += `<p>Have position? ${ETH.status}</p>`;
+  page += `<p>Have position? ${ETH.holding}</p>`;
   page += `<p>Initial round? ${ETH.initial}</p>`;
   page += `<p>Data Length: ${ETH.data.length}</p>`;
   page += `<p>Transactions: ${ETH.txn.length}</p>`;
@@ -712,6 +743,20 @@ app.get('/', (req, res) => {
 
 app.get('/debug', (req, res) => {
   res.download('/logs/debug.txt', 'debug.txt', { root: __dirname });
+});
+
+app.get('/txns/:token', (req, res) => {
+  switch (req.params.token) {
+    case 'btc':
+      res.json(BTC.txn);
+      break;
+    case 'eth':
+      res.json(ETH.txn);
+      break;
+    default:
+      res.send(`no token found for what was provided: ${req.params.token}`);
+      break;
+  }
 });
 
 app.listen(9033, () => logit(logger, '[WEB] App listening on 9033'));

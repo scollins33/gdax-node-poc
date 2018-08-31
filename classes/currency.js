@@ -3,7 +3,9 @@ class Currency {
     this.name = pName;
     this.ticker = pTicker;
     this.initial = true;
-    this.status = false;
+    this.holding = false;
+    this.cooldown = false;
+    this.cdTimer = 0;
     this.account = pAccount;
     this.data = [];
     this.txn = [];
